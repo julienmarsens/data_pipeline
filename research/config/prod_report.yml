@@ -1,0 +1,30 @@
+saving_path: './common/data/binance/spread/'
+
+pairs: [
+    ['ADAUSDT', 'DOTUSDT'],
+    ['ADAUSDT', 'AVAXUSDT'],
+    ['SOLUSDT', 'ADAUSDT'],
+    ['SOLUSDT', 'DOGEUSDT']
+]
+
+fitting_dates: [
+    [2025_07_20, '2025_08_03'],
+    ['2025_07_20', '2025_08_03'],
+    ['2025_07_20', '2025_08_03'],
+    ['2025_07_20', '2025_08_03']
+]
+
+rolling_angle_windows_in_days: 4
+
+download_data: False
+plot_data: False
+build_cointegration_test: False
+build_signal_angles: True
+
+number_of_data_points: 100_000
+
+cointegration_test:
+  half_life_window: 300
+  half_life_step: 100
+
+# python3 -m st

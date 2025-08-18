@@ -1,0 +1,9 @@
+server_ip:
+server_data_path:
+local_data_path:
+
+download_data:
+sync_pairs:
+
+production_analysis: True
+production_analysis_report_path:
