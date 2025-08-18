@@ -4,14 +4,15 @@ import os
 import itertools
 
 
-from common.spread_binance_data_download import SpreadBinanceRestDataDownload
-import stat_arb_pipeline.build_cointegration_test_4 as cointegration_test
-import stat_arb_pipeline.build_signal_angle_5 as signal_angle
+from research.tools.binance_data_download import SpreadBinanceRestDataDownload
+import research.tools.build_cointegration_test as cointegration_test
+import research.tools.build_signal_angle as signal_angle
 
 
 class ResearchPipeline():
 
 	config_version = str(sys.argv[1])
+
 
 	file = open(f'./stat_arb_pipeline/config/{config_version}.yml', 'r')
 	config = yaml.load(file, Loader=yaml.FullLoader)
