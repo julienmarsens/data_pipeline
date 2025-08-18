@@ -1,29 +1,13 @@
-saving_path: './data/binance/spread/'
+ssh:
+  host: 13.231.38.207
+  port: 22
+  user: ubuntu
+  key: ~/.ssh/id_rsa.pub   # or null if using password
+  password: null           # leave null to be prompted at runtime
 
-pairs: [
-    ['ADAUSDT', 'DOTUSDT'],
-    ['ADAUSDT', 'AVAXUSDT'],
-    ['SOLUSDT', 'ADAUSDT'],
-    ['SOLUSDT', 'DOGEUSDT']
-]
+paths:
+  remote_dir: /path/on/server
+  local_dir: /path/on/local
 
-fitting_dates: [
-    [2025_07_20, '2025_08_03'],
-    ['2025_07_20', '2025_08_03'],
-    ['2025_07_20', '2025_08_03'],
-    ['2025_07_20', '2025_08_03']
-]
-
-rolling_angle_windows_in_days: 4
-
-download_data: False
-build_cointegration_test: False
-build_signal_angles: True
-
-number_of_data_points: 100_000
-
-cointegration_test:
-  half_life_window: 300
-  half_life_step: 100
-
-# python3 -m stat_arb_pipeline prod
+options:
+  recursive: true

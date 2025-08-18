@@ -3,7 +3,6 @@ import sys
 import os
 import itertools
 
-
 from research.tools.binance_data_download import SpreadBinanceRestDataDownload
 import research.tools.build_cointegration_test as cointegration_test
 import research.tools.build_signal_angle as signal_angle
@@ -12,7 +11,6 @@ import research.tools.build_signal_angle as signal_angle
 class ResearchPipeline():
 
 	config_version = str(sys.argv[1])
-
 
 	file = open(f'./stat_arb_pipeline/config/{config_version}.yml', 'r')
 	config = yaml.load(file, Loader=yaml.FullLoader)
