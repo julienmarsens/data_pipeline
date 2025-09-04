@@ -1,0 +1,89 @@
+if(CROSS_ARBITRAGE_CMAKE_PROJECT_NAME)
+  set(NAME ${CROSS_ARBITRAGE_CMAKE_PROJECT_NAME})
+else()
+  set(NAME cross_arbitrage_pm)
+endif()
+# set(NAME cross_arbitrage_pm)
+project(${NAME})
+
+#add_compile_definitions(CCAPI_ENABLE_SERVICE_MARKET_DATA)
+#add_compile_definitions(CCAPI_ENABLE_SERVICE_EXECUTION_MANAGEMENT)
+
+### MySQL Connector/C++ ###
+
+#set(MYSQLCONNECTORCPP_ROOT_DIR "/usr/local/mysql-connector-c++-8.1.0")
+
+#set(MYSQL_HEADER_DIR /usr/local/mysql-8.1.0-macos13-arm64/include)
+#set(MYSQL_LIB_DIR /usr/local/mysql-8.1.0-macos13-arm64/lib)
+
+### Include paths ###
+#include_directories(${MYSQL_HEADER_DIR})
+#link_libraries(${MYSQL_LIB_DIR})
+
+#include_directories(/usr/local/mysql-connector-c++-8.1.0/include/jdbc/)
+
+set(FULL_PATH_TO_MYSQL_CONNECTOR_CPP_DIR /usr/local/mysql-connector-c++-8.1.0)
+include_directories(${FULL_PATH_TO_MYSQL_CONNECTOR_CPP_DIR}/include/jdbc)
+include_directories(${FULL_PATH_TO_MYSQL_CONNECTOR_CPP_DIR}/include)
+link_directories(${FULL_PATH_TO_MYSQL_CONNECTOR_CPP_DIR}/lib64)
+
+add_executable(${NAME} main.cpp)
+
+target_link_libraries(${NAME} curl mysqlcppconn)
+target_compile_features(${NAME} PRIVATE cxx_range_for) 
+
+#include_directories(/opt/homebrew/Cellar/mysql-connector-c++/8.1.0/include)
+#target_link_libraries(${NAME} -L/opt/homebrew/Cellar/mysql-connector-c++/8.1.0/lib/)
+#target_link_libraries(${NAME} libmysqlcppconn8.2.8.1.0.dylib)
+
+#include_directories(/usr/local/Cellar/mysql-connector-c++/8.0.25/include)
+#target_link_libraries(connectToMysql -L/usr/local/Cellar/mysql-connector-c++/8.0.25/lib/)
+#target_link_libraries(connectToMysql libmysqlcppconn8.2.8.0.25.dylib)
+
+#For imported linking..
+#add_library(libmysqlcppconn STATIC IMPORTED)
+
+#set_property(TARGET libmysqlcppconn PROPERTY IMPORTED_LOCATION /usr/local/mysql-connector-c++-8.1.0/lib64/libmysqlcppconn-static.a)
+
+#target_link_libraries(${NAME} libmysqlcppconn)
+
+#target_link_libraries(${NAME} ${MYSQL_LIB_DIR}/libmysqlclient.a)
+#target_link_libraries(${NAME} ${MYSQL_LIB_DIR}/libmysqlservices.a)
+#target_link_libraries(${NAME} ${MYSQL_LIB_DIR}/libssl.3.dylib)
+#target_link_libraries(${NAME} ${MYSQL_LIB_DIR}/libcrypto.3.dylib)
+
+add_compile_definitions(CCAPI_LEGACY_USE_WEBSOCKETPP)
+
+if(NOT CCAPI_LEGACY_USE_WEBSOCKETPP)
+  add_dependencies(${NAME} boost rapidjson)
+endif()
+
+# WARNING: comment for production -> DEBUG
+# If backtesting, you may want to comment out the following line to improve run-time speed.
+add_compile_definitions(CCAPI_APP_ENABLE_LOG_INFO)
+
+# If uncommented, the program will print out more information.
+#add_compile_definitions(CCAPI_ENABLE_LOG_TRACE)
+#add_compile_definitions(CCAPI_ENABLE_LOG_DEBUG)
+
+# leave commented
+#set(CMAKE_BUILD_TYPE Debug)
+
+# WARNING: comment if LIVE & PAPER/uncomment if Backtest
+add_compile_definitions(CCAPI_APP_IS_BACKTEST)
+
+#add_compile_definitions(CCAPI_ENABLE_EXCHANGE_BITMEX)
+#add_compile_definitions(CCAPI_ENABLE_EXCHANGE_BINANCE)
+#add_compile_definitions(CCAPI_ENABLE_EXCHANGE_KUCOIN)
+
+#add_compile_definitions(CCAPI_ENABLE_EXCHANGE_COINBASE)
+#add_compile_definitions(CCAPI_ENABLE_EXCHANGE_GEMINI)
+
+add_compile_definitions(CCAPI_ENABLE_EXCHANGE_BINANCE_COIN_FUTURES)
+add_compile_definitions(CCAPI_ENABLE_EXCHANGE_DERIBIT)
+
+add_compile_definitions(CCAPI_ENABLE_SERVICE_MARKET_DATA)
+add_compile_definitions(CCAPI_ENABLE_SERVICE_EXECUTION_MANAGEMENT)
+
+
+

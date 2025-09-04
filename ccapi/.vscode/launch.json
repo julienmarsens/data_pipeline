@@ -1,0 +1,35 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        
+        {
+            "name": "Launch",
+            "type": "lldb",
+            "request": "launch",
+            //"program": "${workspaceFolder}/build/src/market_data_simple_subscription/market_data_simple_subscription",
+            //"program": "${workspaceFolder}/app/build/src/cross_arbitrage/cross_arbitrage",
+            "program": "${workspaceFolder}/app/build/src/cross_arbitrage_dbg/cross_arbitrage_dbg",
+
+            // binance type account -> don't aggregate multiple same products within same sub account
+            // "args": ["trader_50", "reinit"],
+            // "args": ["trader_50", "liquidation"],
+            //"args": ["trader_1", "target", "750", "-1250"],
+
+            // okx type account -> i.e. multiple same products within one sub...
+            //"args": ["trader_1"],
+            // similar to : target
+            //"args": ["trader_1", "initorder", "-100", "100"],
+            // similar to : liquidation
+            "args": ["trader_50", "liquidationorder", "1500", "-2920", " > logliquidationt50"],
+            // similar to reinit
+            // "args": ["trader_40", "reinitorder", "0", "0"],
+
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}",
+            "environment": [],
+            "externalConsole": false,
+            //"MIMode": "lldb"
+            //"MIDebuggerPath": "/Applications/Xcode.app/Contents/Developer/usr/bin"
+        }
+    ]
+}

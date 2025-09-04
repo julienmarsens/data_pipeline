@@ -1,0 +1,189 @@
+cmake_minimum_required(VERSION 3.14)
+set(NAME app)
+project(${NAME})
+if(NOT "${CMAKE_CXX_STANDARD}")
+  set(CMAKE_CXX_STANDARD 17)
+endif()
+message(STATUS "CMAKE_CXX_STANDARD: ${CMAKE_CXX_STANDARD}")
+if(NOT APPLE AND NOT MSVC)
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pthread")
+endif()
+set(OPENSSL_USE_STATIC_LIBS TRUE)
+if (WIN32)
+  set(CMAKE_BUILD_TYPE "Release")
+endif()
+
+# don't comment if production as of now.
+set(CMAKE_BUILD_TYPE Debug)
+
+if(NOT CMAKE_BUILD_TYPE)
+  set(CMAKE_BUILD_TYPE "Release")
+endif()
+message(STATUS "CMAKE_BUILD_TYPE: ${CMAKE_BUILD_TYPE}")
+get_filename_component(CCAPI_PROJECT_DIR ../ ABSOLUTE)
+message(STATUS "CCAPI_PROJECT_DIR: ${CCAPI_PROJECT_DIR}")
+
+set(CCAPI_LEGACY_USE_WEBSOCKETPP true)
+
+if(NOT CCAPI_LEGACY_USE_WEBSOCKETPP)
+  message(STATUS "use boost beast websocket")
+  if(NOT BOOST_INCLUDE_DIR)
+  include(ExternalProject)
+  ExternalProject_Add(boost
+    URL    https://boostorg.jfrog.io/artifactory/main/release/1.80.0/source/boost_1_80_0.tar.gz
+    SOURCE_DIR        "${CMAKE_BINARY_DIR}/boost"
+    CONFIGURE_COMMAND ""
+    BUILD_COMMAND     ""
+    INSTALL_COMMAND   ""
+    TEST_COMMAND      ""
+  )
+  set(BOOST_INCLUDE_DIR "${CMAKE_BINARY_DIR}/boost")
+  else()
+  add_library(boost INTERFACE)
+  endif()
+  if(NOT RAPIDJSON_INCLUDE_DIR)
+  include(ExternalProject)
+  ExternalProject_Add(rapidjson
+    URL    https://github.com/Tencent/rapidjson/archive/refs/tags/v1.1.0.tar.gz
+    SOURCE_DIR        "${CMAKE_BINARY_DIR}/rapidjson"
+    CONFIGURE_COMMAND ""
+    BUILD_COMMAND     ""
+    INSTALL_COMMAND   ""
+    TEST_COMMAND      ""
+  )
+  set(RAPIDJSON_INCLUDE_DIR "${CMAKE_BINARY_DIR}/rapidjson/include")
+  else()
+  add_library(rapidjson INTERFACE)
+  endif()
+  message(STATUS "include directories")
+	include_directories(${CCAPI_PROJECT_DIR}/include ${BOOST_INCLUDE_DIR} ${RAPIDJSON_INCLUDE_DIR} ${OPENSSL_INCLUDE_DIR})
+else()
+  message(STATUS "use websocketpp")
+  add_compile_definitions(CCAPI_LEGACY_USE_WEBSOCKETPP)
+  set(RAPIDJSON_INCLUDE_DIR ${CCAPI_PROJECT_DIR}/dependency/rapidjson/include)
+  set(WEBSOCKETPP_INCLUDE_DIR ${CCAPI_PROJECT_DIR}/dependency/websocketpp)
+  set(BOOST_INCLUDE_DIR ${CCAPI_PROJECT_DIR}/dependency/boost)
+  include_directories(${CCAPI_PROJECT_DIR}/include ${WEBSOCKETPP_INCLUDE_DIR} ${BOOST_INCLUDE_DIR} ${RAPIDJSON_INCLUDE_DIR} ${OPENSSL_INCLUDE_DIR})
+endif()
+set(APP_INCLUDE_DIR ${CCAPI_PROJECT_DIR}/app/include)
+message(STATUS "APP_INCLUDE_DIR: ${APP_INCLUDE_DIR}")
+
+find_package(OpenSSL REQUIRED)
+include_directories(${APP_INCLUDE_DIR})
+set(ADDITIONAL_LINK_LIBRARIES "")
+if (WIN32)
+  set(ADDITIONAL_LINK_LIBRARIES ws2_32)
+endif()
+
+### MySQL Connector/C++ ###
+
+#set(MYSQLCONNECTORCPP_ROOT_DIR "/usr/local/mysql-connector-c++-8.1.0")
+
+#set(MYSQL_HEADER_DIR /usr/local/mysql-8.1.0-macos13-arm64/include)
+#set(MYSQL_LIB_DIR /usr/local/mysql-8.1.0-macos13-arm64/lib)
+
+### Include paths ###
+#include_directories(${MYSQL_HEADER_DIR})
+#link_libraries(${MYSQL_LIB_DIR})
+
+#/usr/local/mysql-connector-c++-8.1.0/include/jdbc
+
+#include_directories(${MYSQLCONNECTORCPP_ROOT_DIR}/include)
+
+#include_directories (${MYSQLCONNECTORCPP_ROOT_DIR}/include/jdbc)
+#include_directories (${MYSQLCONNECTORCPP_ROOT_DIR}/include/mysql)
+#include_directories (${MYSQLCONNECTORCPP_ROOT_DIR}/include/mysqlx)
+
+#include_directories (${MYSQLCONNECTORCPP_ROOT_DIR}/include)
+#include_directories (${MYSQLCONNECTORCPP_ROOT_DIR}/lib64)
+#include_directories (${MYSQL_ROOT_DIR}/include)
+
+#/usr/local/mysql-connector-c++-8.1.0/include
+#/usr/local/mysql-8.1.0-macos13-arm64/include
+#/usr/local/mysql-8.1.0-macos13-arm64/lib
+#/usr/local/mysql-connector-c++-8.1.0/lib64
+
+#link_directories (${MYSQL_ROOT_DIR}/include)
+#link_directories (${MYSQLCONNECTORCPP_ROOT_DIR}/include)
+
+#link_directories (${MYSQLCONNECTORCPP_ROOT_DIR}/lib64)
+#link_directories (${MYSQL_ROOT_DIR}/lib)
+
+#link_directories (${MYSQLCONNECTORCPP_ROOT_DIR}/driver)
+#link_directories (/usr/lib64/mysql/)
+#link_directories (/usr/lib64/)
+#link_directories (/usr/local/mysql/lib/)
+
+# end mysql libs
+
+link_libraries(OpenSSL::Crypto OpenSSL::SSL ${ADDITIONAL_LINK_LIBRARIES})
+add_compile_options(-Wno-deprecated -Wno-nonnull -Wno-deprecated-declarations)
+
+# If you encountered segmentation fault at run-time, comment out the following line.
+if (CMAKE_BUILD_TYPE STREQUAL "Release")
+  set(CMAKE_INTERPROCEDURAL_OPTIMIZATION TRUE)
+endif()
+
+#add_compile_definitions(CCAPI_ENABLE_EXCHANGE_COINBASE)
+#
+#add_compile_definitions(CCAPI_ENABLE_EXCHANGE_GEMINI)
+#
+#add_compile_definitions(CCAPI_ENABLE_EXCHANGE_KRAKEN)
+#
+#add_compile_definitions(CCAPI_ENABLE_EXCHANGE_BITSTAMP)
+#
+#add_compile_definitions(CCAPI_ENABLE_EXCHANGE_BITFINEX)
+#
+#add_compile_definitions(CCAPI_ENABLE_EXCHANGE_BINANCE_US)
+#add_compile_definitions(CCAPI_ENABLE_EXCHANGE_BINANCE)
+#
+#add_compile_definitions(CCAPI_ENABLE_EXCHANGE_OKX)
+#
+#add_compile_definitions(CCAPI_ENABLE_EXCHANGE_KUCOIN)
+#
+#add_compile_definitions(CCAPI_ENABLE_EXCHANGE_GATEIO)
+#
+#add_compile_definitions(CCAPI_ENABLE_EXCHANGE_CRYPTOCOM)
+#
+#add_compile_definitions(CCAPI_ENABLE_EXCHANGE_BYBIT)
+#
+#add_compile_definitions(CCAPI_ENABLE_EXCHANGE_ASCENDEX)
+#
+#add_compile_definitions(CCAPI_ENABLE_EXCHANGE_BITGET)
+#
+#add_compile_definitions(CCAPI_ENABLE_EXCHANGE_BITMART)
+#
+#add_compile_definitions(CCAPI_ENABLE_EXCHANGE_MEXC)
+#
+
+add_compile_definitions(CCAPI_ENABLE_EXCHANGE_BINANCE_COIN_FUTURES)
+add_compile_definitions(CCAPI_ENABLE_EXCHANGE_DERIBIT)
+
+add_compile_definitions(CCAPI_ENABLE_SERVICE_MARKET_DATA)
+add_compile_definitions(CCAPI_ENABLE_SERVICE_EXECUTION_MANAGEMENT)
+
+find_package(ZLIB REQUIRED)
+link_libraries(ZLIB::ZLIB)
+
+# WARNING: comment for production -> DEBUG
+# If backtesting, you may want to comment out the following line to improve run-time speed.
+add_compile_definitions(CCAPI_APP_ENABLE_LOG_INFO)
+
+# If uncommented, the program will print out more information.
+#add_compile_definitions(CCAPI_APP_ENABLE_LOG_DEBUG)
+#add_compile_definitions(CCAPI_ENABLE_LOG_TRACE)
+
+# If you have custom logics and want to reuse part of class EventHandlerBase.
+# add_compile_definitions(CCAPI_APP_USE_CUSTOM_EVENT_HANDLER)
+# get_filename_component(CUSTOM_EVENT_HANDLER_DIRECTORY ${CUSTOM_EVENT_HANDLER_PATH} DIRECTORY)
+# include_directories(${CUSTOM_EVENT_HANDLER_DIRECTORY})
+
+# If you have custom logics and need to repeatedly rebuild for backtesting, you may want to comment out the following line to improve build-time speed. If so, make sure to
+# provide additional environment variables BASE_ASSET_OVERRIDE, QUOTE_ASSET_OVERRIDE, ORDER_PRICE_INCREMENT_OVERRIDE, and ORDER_QUANTITY_INCREMENT_OVERRIDE at run time.
+#add_compile_definitions(CCAPI_APP_IS_BACKTEST)
+
+#add_subdirectory(src/cross_arbitrage_dbg)
+add_subdirectory(src/cross_arbitrage_pm)
+#add_subdirectory(src/cross_arbitrage)
+#add_subdirectory(src/spot_market_making)
+#add_subdirectory(src/single_order_execution)
