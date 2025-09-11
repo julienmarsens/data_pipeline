@@ -53,3 +53,5 @@ rolling_angle_windows_in_days: 4
 volatility_window_minutes: 240
 
 # python3 -m optima_finder master
+
+# python -m optima_finder master

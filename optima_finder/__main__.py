@@ -15,7 +15,7 @@ from common.download_internal_market_data import get_internal_market_data
 from optima_finder.tools.results_analyser import select_best_params, plot_and_save_pnls
 
 
-TODO: "get prod pairs from google sheet + informe that csv pnl is in sample"
+TODO: "get prod pairs from google sheet + informe that csv pnl is in sample + add optima_pairs_in git"
 
 
 class OptimaFinderPipeline():

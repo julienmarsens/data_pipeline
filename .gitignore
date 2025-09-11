@@ -157,3 +157,6 @@ package-lock.json
 *.csv
 *.pkl
 *.pickle
+
+# path config
+config/settings.json
