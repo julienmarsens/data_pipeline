@@ -1,0 +1,55 @@
+
+# if true, all flags below are true
+from_scratch: False #True False
+
+download_1m_binance_data: False
+download_internal_data_and_sync: False
+
+find_best_pairs: False
+run_grid_search: True
+best_parameter_analysis: False
+
+number_of_top_pairs: 20
+number_of_days: 18
+
+selection_utility_function:
+  sharpe_ratio_out_of_sample: 0.10
+  sharpe_ratio_in_sample: 0.10
+  pnl_out_of_sample: 0.10
+  num_crossing_out_of_sample: 0.20
+  r2_out_of_sample: 0.30
+  sharpe_drop_out_sample_to_in_sample: 0.20
+
+assets: [
+    'BTCUSDT',
+    'ETHUSDT',
+    'SOLUSDT',
+    'DOTUSDT',
+    'DOGEUSDT',
+    'ADAUSDT',
+    'BCHUSDT',
+    'BNBUSDT',
+    "LINKUSDT",
+    "XLMUSDT",
+    "UNIUSDT",
+    "TRXUSDT",
+    "AVAXUSDT",
+    "SUIUSDT",
+    "XRPUSDT",
+    "LTCUSDT"
+]
+
+prod: [
+ ['DOGEUSDT', 'AVAXUSDT'],
+ ['UNIUSDT', 'AVAXUSDT'],
+ ['DOTUSDT', 'AVAXUSDT'],
+ ['BNBUSDT', 'TRXUSDT'],
+ ['DOTUSDT', 'DOGEUSDT']
+]
+
+
+
+rolling_angle_windows_in_days: 4
+volatility_window_minutes: 240
+
+# python3 -m optima_finder master

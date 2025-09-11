@@ -1,0 +1,6 @@
+pandas
+matplotlib
+mysql-connector-python
+ruamel.yaml
+scp
+scikit-learn

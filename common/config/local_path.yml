@@ -1,0 +1,8 @@
+
+paths:
+  local_user: /Users/julienmarsens
+  external_disk: /Volumes/disk_ext
+  data_path: /Volumes/disk_ext/market_data
+  google_api_credentials: /Users/julienmarsens/mercurial-water-249415-f8d09881cdd1.json
+
+

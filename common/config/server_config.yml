@@ -1,0 +1,16 @@
+live_monitoring:
+  host: "13.115.65.27"
+  port: 3306
+  user: "root"
+  password: "Swlswl123$"           # leave null to be prompted at runtime
+  data_base_name: "swl_perf"
+
+market_data_old:
+  host: "13.115.65.27"
+  port: 3306
+  user: "root"
+  password: "Swlswl123$"           # leave null to be prompted at runtime
+
+market_data:
+  host: "13.231.38.207"
+  user: "ubuntu"

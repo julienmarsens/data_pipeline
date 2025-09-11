@@ -1,0 +1,197 @@
+Kernel_1:
+  name: ddc
+  exchange: binance
+  naming: trader_5
+  last_naming: trader_523
+  assets_usd_equivalent: 58929
+
+  constrain:
+    max_leverage_x: 2
+
+  account_1:
+    pairs: []
+    trade_size: [ ]
+    public_key: tT7C4xdkcVhQQbFNhFdAp3akyqmpxY1CUBsxEnfy2qf8OFdcdB2Fyt2hyERRyyKQ
+    private_key: vvkqHTKALcJPDTIqknAEVYiT7rddHPsfJC0ja5GVOG3zMqaMkt7x5WnxLrhPYUyb
+  account_2:
+    pairs: []
+    trade_size: [ ]
+    public_key: HtCvnevUnnNPIhlmerpUgqGu4HlWryj6cSQtpJMiZTciF14chnlpcg0AWHtZy3G4
+    private_key: 4E8GllCMPTG6Vtnjnh5OM9zEjDmax0QXD4NE1vjsrNXQKagFVw9jeqMLWolA6DW0
+  account_3:
+    pairs: []
+    trade_size: [ ]
+    public_key: ECMrXlxElBiGSGjZMJVMmcbI2TP8zxON18iG80FVQmKEQXcnzlICaUp7LMGNikNr
+    private_key: 0eKzrzqh9htRFqmyaXEah1sWTKw95bTOILQabbbZJ8thbMlyNJImY6MQfZgqw6w6
+
+Kernel_2:
+  name: elk
+  exchange: binance
+  naming: trader_4
+  last_naming: trader_437
+  assets_usd_equivalent: 207958
+
+  constrain:
+    max_leverage_x: 2
+
+  account_1:
+    pairs: []
+    trade_size: [ ]
+    public_key: xGYR4ce2ZlE9saKwbxYU3HIQkzUIArxKCezaSFvS0XMS8iiGGjxMvUq7ozoQ1t6T
+    private_key: 9eIoRZrRLG7CFTo9mXGvwYLwhkjo4SkJTvVSTyb9g1LuDbVzzFU8NGviiBQv3VCx
+  account_2:
+    pairs: []
+    trade_size: [ ]
+    public_key: lV4TvwLqCpTesxdDF5UDUpLZtr5YF1bmVae2190ghzo7Nnlgm4IcZnXpTs4Mnrb8
+    private_key: OI3CKGQPztMWoOQNoBgGaCb2V25EX73kFXxgIgfp2quko5YRHzgIZkd1dI9QFdH0
+  account_3:
+    pairs: []
+    trade_size: [ ]
+    public_key: 3SjcTfjhc3TRp9FEEZ3hdkIcN5n2BNfIgmAGSItyUQ4sXD7FkGIpQ63ESmqa2mHd
+    private_key: P6GYVO5MWlHsZ3S2Xsvurb8vnSs7fjgPwO9zJQmRklMFjd9HX9nWQVbFFHAzV6k4
+
+Kernel_3:
+  name: arcs
+  exchange: binance
+  naming: trader_1
+  last_naming: trader_125
+  assets_usd_equivalent: 9194
+
+  constrain:
+    max_leverage_x: 4
+
+  account_1:
+    pairs: []
+    trade_size: [ ]
+    public_key: liIq4ELllWZuYjVN0HIfYCe1CrjgVyqsusPNnY3j7EYa6IrqjapmbGigOLcpeeTK
+    private_key: aJBUwARG1tPPHthJmjji1WX63CypT4rtCTtkJ4PLmaUpmy4gTLb7lUyHKLUA7y6c
+  account_2:
+    pairs: []
+    trade_size: [ ]
+    public_key: 5cJ2GDiHZI3WUIMh1WkfOMKDWfkMYFCBg5hubrpBefwvJfq0D6RuUaIRVan5zmQk
+    private_key: jrBqC1UmHrkO3yzAbIBcR9Dxs4vvUJ2C4cBIJaqNdRPsG3Gy9pQ9NVwiMdIyF33H
+  account_3:
+    pairs: []
+    trade_size: [ ]
+    public_key: mM678yMjudooqmK1cgK2UkU4Qm8cToFbC6i00of1UAe8ytp84S54KbPzLhvQMvsi
+    private_key: 6cSuDaGLrVUXC0m8xbYN5yzHbittJavRe1pjlp0GFdRKCWFSf4QczR6IEPPZQixt
+
+Kernel_4:
+  name: torus
+  exchange: binance
+  naming: trader_6
+  last_naming: trader_623
+  assets_usd_equivalent: 102514
+
+  constrain:
+    max_leverage_x: 2
+
+  account_1:
+    pairs: []
+    trade_size: [ ]
+    public_key: 1FP9K9gg4yUl5wqwwk8A9YCTrvxzfz9PSXpJ1XyN1JMdDhVKuvGbu02krBbkYpyl
+    private_key: s3NjbDrZkAGdhoBQCfobHAMFpV8dXAzyt7fCR9Tv8LQu3ps1RwAHfS9bhxF4LAXk
+  account_2:
+    pairs: []
+    trade_size: [ ]
+    public_key: 6wXnzm3X9DZFPgT6vqQUllFg702M7wJeJRE7ssB8wxc8z5EE45S4LPxBuZjmkfPa
+    private_key: FZvtUn1J8vY2DUaHpmygFTBfgWvaBk1tsyEiVgWofZqzastod4QgCGOb4MjUQOFZ
+  account_3:
+    pairs: []
+    trade_size: [ ]
+    public_key: NrwO6Q5dGhHK0q7QRswofTbWCy9j6W172NYTFg9HcL7k7O0zqoY29JErY7dnb4ck
+    private_key: 350FXJWFqfDYHRHELxSBLCUgGGVzWH88WkMd2FIQMKd7xugdnS8Qgu57XtCSg1O1
+
+Kernel_5:
+  name: bl
+  exchange: binance
+  naming: trader_7
+  last_naming: trader_723
+  assets_usd_equivalent: 127595
+
+  constrain:
+    max_leverage_x: 2
+
+  account_1:
+    pairs: []
+    trade_size: [ ]
+    public_key: Kv2wI7tVlXpgpLUuftwsZNy4sKjAHd2PiHEmfawB66VJDBstQsxaja8R3MVgJiWU
+    private_key: WAr1RPHqx5K655MqW9xlWsTThHp8nD7Gag0oGCoCkvWuAACnzY2bK9SWxVMHQUvX
+  account_2:
+    pairs: []
+    trade_size: [ ]
+    public_key: ZvcbYycIuFt8Vbmvqys2KMFGlaV4SbpJPrTsn0t6zJVpsHTrJUNsOeknFFyFGiAn
+    private_key: clbPYNhmWzWW4QcTYAuYUxYYxkmXOuRTSayJiXv3BzLff2TxtO2jOqJGkW6odkzr
+  account_3:
+    pairs: []
+    trade_size: [ ]
+    public_key: d3mhoFTvLCtiDlcOU6Wuzs7UIZjE5AiOaESPX3fguQ6pD8g2WFwwa9WGjsAwXa3g
+    private_key: cxgBy7Rso23JxoBEPcem8UjN7LDvdDVSDSAro8e0KbJ7UzSCNx8FR6ooKzh3VpWp
+
+Kernel_7:
+  name: curious
+  exchange: binance
+  naming: trader_9
+  last_naming: trader_922
+  assets_usd_equivalent: 203493
+
+  constrain:
+    max_leverage_x: 2
+
+  account_1:
+    pairs: []
+    trade_size: []
+    public_key: FXMqz7AJhPBVTp81n1NHY64KqH7r7OIMqQGKPCsbSRt1FCn0IlpfRfeZcsl6ybyr
+    private_key: nhKS9LzFlILDwkKaJmuKHVMHcMyHfAxXpy4hCYG5kqiSaPRRrVQBMayauMcfzGnc
+  account_2:
+    pairs: [ ]
+    trade_size: [ ]
+    public_key: iqOsXJ1O2eZEHCcj82rlz5lsb1A8jOZUfmTbGpOgrT59NltZI1lKGI1g1JGLLAiB
+    private_key: zxSWIZ2fqlSfHUUcoTpZTt6XdPvjgvwfWjuNowW12cVBd0U8ExbYGxwClRp3F1xT
+  account_3:
+    pairs: [ ]
+    trade_size: [ ]
+    public_key: ThquxcZjCR48gsYCLLHUPdQySmwV7Fl43hFweREg6dxwdjCuvdNyZiJLnE6T7aPJ
+    private_key: Pd9AviSVHGZ3NsBmiXffAtqjwT22hvTiaM5aoDGz6tMex8iZrsuF0OL028F1L3TS
+
+Kernel_9:
+  name: saber
+  exchange: binance
+  naming: trader_11
+  last_naming: trader_1119
+  assets_usd_equivalent: 102805
+
+  constrain:
+    max_leverage_x: 2
+
+  account_1:
+    pairs: [ ]
+    trade_size: [ ]
+    public_key: kzwP7dZMfvd1ytGIw4xh6MFJ6AR6MY582ngdEbFu9stTm8FpezwNOxM3dmK4yZwu
+    private_key: lmr2Hkh9I2zI4R4U0g6GB7UfZivJXq4vaddC19WeIIt8JS2t4ORzd8pZOoXjXCzl
+  account_2:
+    pairs: [ ]
+    trade_size: [ ]
+    public_key: 1EeRrLYcBHMpPJvFpzBtFEZqlXR2UuZxPiaSP4ZWCHYPnQydAA8gxoaamEfkwxDN
+    private_key: cLet4Wy3tNNWBMFeo096QiRyas1aAt1MfXiu513kIJF4lfuXkZaEVIkUT4BnF7DE
+  account_3:
+    pairs: [ ]
+    trade_size: [ ]
+    public_key: ihRjen82Al0sJVCNjKD7KW4IvJ7oc8Kzm7AjvUP0g0bZiyVQdu2qpihDy60iGisP
+    private_key: mVBW3n1prGW7YtMBHsLX8aeNGr9AtJrJEWHe77OyrlV9jgW6L2HSA9bKJtYnbEtI
+
+Kernel_10:
+  name: valmar
+  exchange: okx
+  naming: trader_12
+  last_naming: trader_1204
+  assets_usd_equivalent:
+
+  constrain:
+    max_leverage_x: 2
+
+  account_1:
+    pairs: [ ]
+    trade_size: [ ]
+    public_key: b4c17159-bdf0-4a98-a120-79c2ff976971
+    private_key: 616FEB886567A723FAC4CE346694993D

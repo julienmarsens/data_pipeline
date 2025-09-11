@@ -1,0 +1,40 @@
+assets:
+  exchange_name: binance-coin-futures
+
+filtering:
+  min_sharpe: 0.02
+  min_crossing_per_day: 5
+  minimum_pnl_curve_r2: 0.9
+
+output:
+  export_to_pdf: TRUE
+
+grid:
+  signal_angle_range: [-0.875, 0.875] 
+  signal_angle_range_step: 0.125
+  
+  margin_range: [20, 100]
+  margin_range_step: 20
+
+  step_back_range: [0.5, 0.75, .9999]
+
+  trading_angle_range: [-0.5, 0.5]
+  trading_angle_range_step: 0.5
+
+  order_size_range: 1000
+
+  crossing_to_limit_range: [6, 8]
+  crossing_to_limit_range_step: 2
+
+single_run_param: 
+
+  run: FALSE
+  
+  # 0.375#100#0.75#0.5#1000#9
+  
+  signal_angle: 0.375
+  margin: 100
+  step_back: 0.75
+  trading_angle: 0.5
+  order_size: 1000
+  crossing_to_limit: 9

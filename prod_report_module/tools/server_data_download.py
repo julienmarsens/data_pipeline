@@ -116,6 +116,7 @@ def main(config_path):
 
 
 if __name__ == "__main__":
+
     if len(sys.argv) != 2:
         print(f"Usage: {sys.argv[0]} config.yml")
         sys.exit(1)

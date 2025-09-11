@@ -1,0 +1,21 @@
+saving_path: './common/data/binance/spread/'
+
+run_all_possible_pairs: True
+
+assets: [
+"ADAUSDT",
+"AVAXUSDT"
+]
+
+download_data: True
+plot_data: False
+build_cointegration_test: False
+build_signal_angles: True
+
+number_of_data_points: 200_000
+
+cointegration_test:
+  half_life_window: 300
+  half_life_step: 100
+
+# python3 -m stat_arb_pipeline single

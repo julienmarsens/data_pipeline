@@ -22,23 +22,21 @@ class SpreadBinanceRestDataDownload:
             self,
             asset,
             number_of_rows,
-            frequency,
-            path
+            frequency
     ):
         df = self._get_data(
             instrument=asset,
             frequency=frequency,
-            number_of_rows=number_of_rows,
-            path=path
+            number_of_rows=number_of_rows
         )
 
-        df.to_pickle(f"{path}/single_asset_data/{asset}_data.pkl")
+        df.to_pickle(f"./optima_finder/local_data/individual_market_data/{asset}_data.pkl")
         print(f'Data downloaded for: {asset}')
 
-    def merge_data(self, path, asset_1, asset_2):
+    def merge_data(self, asset_1, asset_2):
 
-        df_1 = pd.read_pickle((f"{path}/single_asset_data/{asset_1}_data.pkl"))
-        df_2 = pd.read_pickle((f"{path}/single_asset_data/{asset_2}_data.pkl"))
+        df_1 = pd.read_pickle((f"./optima_finder/local_data/individual_market_data/{asset_1}_data.pkl"))
+        df_2 = pd.read_pickle((f"./optima_finder/local_data/individual_market_data/{asset_2}_data.pkl"))
 
         # Reset index to bring datetime back into a column named 'open_time'
         df_1 = df_1.reset_index().rename(columns={'index': 'open_time'})
@@ -55,7 +53,7 @@ class SpreadBinanceRestDataDownload:
         # Option 1: Normalized by price
         merged_df['normalized_spread'] = merged_df['spread'] / merged_df['close_2']
 
-        merged_df.to_pickle(f"{path}{asset_1}_{asset_2}_data.pkl")
+        merged_df.to_pickle(f"./optima_finder/local_data/spread_data/{asset_1}_{asset_2}_data.pkl")
         print('Data handling done and saved: ', merged_df)
 
 
@@ -63,8 +61,7 @@ class SpreadBinanceRestDataDownload:
             self,
             instrument,
             frequency,
-            number_of_rows,
-            path
+            number_of_rows
     ):
         _url = 'https://api.binance.com'
         _endpoint = '/api/v3/uiKlines'
@@ -159,7 +156,6 @@ class SpreadBinanceRestDataDownload:
             instrument=asset_1,
             frequency=frequency,
             number_of_rows=number_of_rows,
-            path=path
         )
 
         print("data asset 1 done")
@@ -168,7 +164,6 @@ class SpreadBinanceRestDataDownload:
             instrument=asset_2,
             frequency=frequency,
             number_of_rows=number_of_rows,
-            path=path
         )
 
         print("data asset 2 done")
