@@ -23,6 +23,7 @@ client = gspread.authorize(creds)
 sheet_url = "https://docs.google.com/spreadsheets/d/1ztZ5le4ottuTeRqm2AyeaZ4iCPcZFDCZzvLAMzVzMbY/edit?usp=sharing"
 sheet = client.open_by_url(sheet_url).sheet1
 
+
 def pull_prod_config(kernel):
 
     # ---- READ ALL ROWS ----
@@ -32,7 +33,10 @@ def pull_prod_config(kernel):
     configs = []
     trader_ids = []
     model_fitting_dates = []
-    timestamps = []
+    pair_start_times = []   # <--- NEW LIST
+
+    def parse_dt(s):
+        return datetime.datetime.strptime(s, "%H:%M %d.%m.%Y")
 
     for row in rows:
         if row['Kernel'] == kernel:
@@ -55,27 +59,19 @@ def pull_prod_config(kernel):
             configs.append(new_rel)
 
             model_fitting_dates.append([row['fitting_date_start'], row['fitting_date_end']])
-            timestamps.append(row['launch_timestamp'])
 
-    # ---- Compute earliest timestamp ----
-    def parse_dt(s):
-        return datetime.datetime.strptime(s, "%H:%M %d.%m.%Y")
-
-    earliest_timestamp = min(parse_dt(ts) for ts in timestamps)
-
-    live_pnl_report_span = {
-        "start_day": earliest_timestamp.strftime("%Y_%m_%d"),
-        "start_time": earliest_timestamp.strftime("%H:%M:%S")
-    }
+            # parse and store as [day, time] directly from sheet
+            dt = parse_dt(row['launch_timestamp'])
+            pair_start_times.append([dt.strftime("%Y_%m_%d"), dt.strftime("%H:%M:%S")])
 
     # ---- RESULT ----
     result = {
         "kernel": kernel,
-        "live_pnl_report_start": live_pnl_report_span,
         "pairs": pairs,
         "configs": configs,
         "trader_ids": trader_ids,
-        "model_fitting_dates": model_fitting_dates
+        "model_fitting_dates": model_fitting_dates,
+        "pair_start_times": pair_start_times   # per-pair timestamps only
     }
 
     # ---- PRETTY PRINT ----
@@ -83,5 +79,6 @@ def pull_prod_config(kernel):
     pp.pprint(result)
 
     return result
+
 
 # pull_prod_config("Kernel_4")

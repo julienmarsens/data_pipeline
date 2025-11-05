@@ -1,32 +1,29 @@
 pull_parameters: true
 
-# select a kernel if pull_parameters=true and you want to pull the config from sheet
+# select a kernel if pull_parameters=true and you want to pull the config from prod sheet
 target_kernel: Kernel_4
 
-
 # -- auto fill below -- #
-live_pnl_report_start:
-  start_day: "2025_08_25"
-  start_time: "09:23:00"
 
-pairs: [[DOGEUSDT, AVAXUSDT], [UNIUSDT, AVAXUSDT], [DOTUSDT, AVAXUSDT], [BNBUSDT, TRXUSDT], [DOTUSDT, DOGEUSDT]]
-configs: [0.25#50#0.5#0#2000#5, -0.25#75#0.75#0#1200#9, -0.375#50#0.5#0.25#2200#5, 0#300#0.9999#0#2600#9, 0#100#0.75#0#4100#5]
-trader_ids: [trader_624, trader_625, trader_626, trader_627, trader_628]
-model_fitting_dates: [['2025_07_01', '2025_08_15'], ['2025_07_01', '2025_08_15'], ['2025_07_01', '2025_08_15'], ['2025_07_01', '2025_08_15'], ['2025_07_01', '2025_08_15']]
+pairs: [[XLMUSDT, XRPUSDT], [DOTUSDT, SUIUSDT], [ADAUSDT, SUIUSDT], [DOTUSDT, TRXUSDT], [XRPUSDT, LTCUSDT], [ADAUSDT, TRXUSDT], [BCHUSDT, LTCUSDT], [SOLUSDT, AVAXUSDT], [XLMUSDT, SUIUSDT]]
+configs: [0.577070510729886#220#0.9999#0.75#1000#12, 0.0282391748810354#50#0.9999#-0.75#1100#12, 0.771545704677548#430#0.9999#0.25#1000#10, -0.92146090169892#60#0.9999#0.25#1000#10, 0.961404994092102#90#0.9999#0.5#1000#8, -0.777568861860349#110#0.9999#0.5#1100#6, -0.75445309863365#500#0.9999#-0.75#1100#10, -0.687095969560552#180#0.9999#-0.5#1100#10, 0.792539901344637#460#0.9999#0.25#1100#10]
+trader_ids: [trader_651, trader_652, trader_653, trader_655, trader_656, trader_657, trader_658, trader_659, trader_660]
+model_fitting_dates: [['2025_08_20', '2025_09_08'], ['2025_06_23', '2025_08_11'], ['2025_06_24', '2025_08_12'], ['2025_06_24', '2025_08_12'], ['2025_06_24', '2025_08_12'], ['2025_06_29', '2025_08_17'], ['2025_06_29', '2025_08_17'], ['2025_06_29', '2025_08_17'], ['2025_06_29', '2025_08_17']]
+pair_start_times: [['2025_09_29', 16:42:00], ['2025_10_01', 16:42:00], ['2025_10_06', 16:42:00], ['2025_10_06', 16:42:00], ['2025_10_06', 16:42:00], ['2025_10_09', 16:42:00], ['2025_10_09', 16:42:00], ['2025_10_09', 16:42:00], ['2025_10_09', 16:42:00]]
 
-# --------------------- #
+# ---auto fill end --- #
 
-download_binance_1m_market_data: false # used for charts
+download_binance_1m_market_data: false # used for charts only
 download_internal_market_data: false
 sync_internal_market_data: false
-run_daily_backtest: true
+run_daily_backtest: false
 
 signal_angle:
-  rolling_angle_windows_in_days: 4
+  rolling_angle_windows_in_days: 4 # used for charts only
 
 cointegration_test:
-  half_life_window: 300
-  half_life_step: 100
+  half_life_window: 300 # used for charts only
+  half_life_step: 100 # used for charts only
 
 
 

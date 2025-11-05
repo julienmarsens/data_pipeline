@@ -88,7 +88,7 @@ def _load_backtest_csv(backtest_dir: str, trader_id: str) -> pd.DataFrame | None
         return None
 
     df = df.copy()
-    df["time_iso"] = pd.to_datetime(df["time_iso"], utc=True)
+    df["time_iso"] = pd.to_datetime(df["time_iso"], utc=True, format="mixed", errors="coerce")
     df = df.sort_values("time_iso").set_index("time_iso")
 
     df["cum_pnl"] = pd.to_numeric(df["cum_pnl"], errors="coerce")

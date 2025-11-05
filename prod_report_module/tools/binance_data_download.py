@@ -101,8 +101,8 @@ class SpreadBinanceRestDataDownload:
             resp = requests.request('GET', total_endpoint + "?" + query)
             resp = resp.json()
 
-            df = df.append(
-                pd.DataFrame(resp, columns=[
+            df = pd.concat(
+                [df, pd.DataFrame(resp, columns=[
                     'open_time',
                     'open',
                     'high',
@@ -115,7 +115,7 @@ class SpreadBinanceRestDataDownload:
                     'taker_buy_base_asset_volume',
                     'taker_buy_quote_asset_volume',
                     'unused_field'
-                ]),
+                ])],
                 ignore_index=True
             )
 
