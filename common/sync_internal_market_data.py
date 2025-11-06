@@ -11,20 +11,10 @@ yaml.width = 10 ** 6
 with open('./common/config/local_path.yml', 'r') as f:
     local_config = yaml.load(f)
 
-with open('./prod_report_module/config/prod_report.yml', 'r') as f:
-    prod_config = yaml.load(f)
-
 # === CONFIGURATION ===
-pairs = prod_config["pairs"]
 
 RAW_DATA_DIR = local_config["paths"]["data_path"]
 SYNC_DATA_DIR = os.path.join(RAW_DATA_DIR, "sync_market_data")
-
-# --- Dates ---
-start_date = prod_config["live_pnl_report_start"]["start_day"]
-start_date = datetime.strptime(start_date, "%Y_%m_%d").strftime("%Y-%m-%d")
-end_date = (datetime.today().date() - timedelta(days=1)).strftime("%Y-%m-%d")
-
 
 # === SYMBOL MAP (exchange filenames) ===
 def to_filename_symbol(symbol: str) -> str:
@@ -43,11 +33,15 @@ def normalize_timestamp(ts: pd.Series) -> pd.Series:
 
 
 # === MAIN SCRIPT ===
-def sync_pairs():
+def sync_pairs(
+        pairs: list,
+        start_date: str,
+        end_date: str,
+    ):
     os.makedirs(SYNC_DATA_DIR, exist_ok=True)
 
-    start = datetime.strptime(start_date, "%Y-%m-%d").date()
-    end = datetime.strptime(end_date, "%Y-%m-%d").date()
+    start = datetime.strptime(start_date, "%Y%m%d").date()
+    end = datetime.strptime(end_date, "%Y%m%d").date()
     delta = timedelta(days=1)
 
     d = start
@@ -127,5 +121,3 @@ def sync_pairs():
         d += delta
 
 
-if __name__ == "__main__":
-    sync_pairs()
