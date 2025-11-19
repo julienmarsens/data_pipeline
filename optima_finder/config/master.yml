@@ -1,56 +1,37 @@
-
 # if true, all flags below are true
-from_scratch: False #True False
+from_scratch: true #True False
+ignore_prod: true
 
-download_1m_binance_data: False
-download_internal_data_and_sync: False
+pull_prod_pairs: false
 
-find_best_pairs: False
-run_grid_search: True
-best_parameter_analysis: False
+download_1m_binance_data: false
+download_internal_data: false
 
-number_of_top_pairs: 20
-number_of_days: 18
+find_best_pairs: false
+sync_internal_data: false
+run_grid_search: true
+best_parameter_analysis: true
+
+number_of_top_pairs: 25
+number_of_days: 150 # 100
+split_date: 20251010 # set to None if no split date required, will do 50/50 split
 
 selection_utility_function:
-  sharpe_ratio_out_of_sample: 0.10
-  sharpe_ratio_in_sample: 0.10
-  pnl_out_of_sample: 0.10
-  num_crossing_out_of_sample: 0.20
-  r2_out_of_sample: 0.30
-  sharpe_drop_out_sample_to_in_sample: 0.20
+  sharpe_ratio_out_of_sample: 0.15
+  sharpe_ratio_in_sample: 0.15
+  pnl_out_of_sample: 0.1
+  num_crossing_out_of_sample: 0.1
+  r2_out_of_sample: 0.4
+  sharpe_drop_out_sample_to_in_sample: 0.1
 
-assets: [
-    'BTCUSDT',
-    'ETHUSDT',
-    'SOLUSDT',
-    'DOTUSDT',
-    'DOGEUSDT',
-    'ADAUSDT',
-    'BCHUSDT',
-    'BNBUSDT',
-    "LINKUSDT",
-    "XLMUSDT",
-    "UNIUSDT",
-    "TRXUSDT",
-    "AVAXUSDT",
-    "SUIUSDT",
-    "XRPUSDT",
-    "LTCUSDT"
-]
+assets: ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'DOTUSDT', 'DOGEUSDT', 'ADAUSDT', 'BCHUSDT', 'BNBUSDT', "LINKUSDT", "XLMUSDT", "UNIUSDT", "TRXUSDT", "AVAXUSDT", "SUIUSDT", "XRPUSDT", "LTCUSDT"]
 
-prod: [
- ['DOGEUSDT', 'AVAXUSDT'],
- ['UNIUSDT', 'AVAXUSDT'],
- ['DOTUSDT', 'AVAXUSDT'],
- ['BNBUSDT', 'TRXUSDT'],
- ['DOTUSDT', 'DOGEUSDT']
-]
-
-
-
-rolling_angle_windows_in_days: 4
+rolling_angle_windows_in_days: 20
 volatility_window_minutes: 240
+
+# --- auto-fill below, do not edit --- #
+
+prod_pairs: []
 
 # python3 -m optima_finder master
 

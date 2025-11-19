@@ -149,7 +149,7 @@ product.specs[["SOLUSD_PERP_INVERSE_BINANCE-COIN-FUTURES"]] <- list(
   contract.den = TRUE
 )
 
-# binance-coin-futures__uniusd-perp__2023-04-01__market-depth.csv
+# binance-coin-futures__suiusd-perp__2023-04-01__market-depth.csv
 product.specs[["SUIUSD_PERP_INVERSE_BINANCE-COIN-FUTURES"]] <- list(
   fx.rate = 1,
   min.order.size = 10, # 10 usd

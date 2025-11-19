@@ -83,198 +83,18 @@ path.to.results  <- file.path(perso_disk_path, "results", args[11])
 
 # C++
 Rcpp::sourceCpp(paste(repo_base_path, "/", "quoter_algo.cpp", sep=""))
-Rcpp::sourceCpp(paste(repo_base_path, "/", "quoter_rm_increasing_size.cpp", sep=""))
+Rcpp::sourceCpp(paste(repo_base_path, "/", "quoter_rm.cpp", sep=""))
 # R utils
 source(paste(repo_base_path, "/", "data_tools.r", sep=""))
 source(paste(repo_base_path, "/", "product_specs.r", sep=""))
 source(paste(repo_base_path, "/", "stats.r", sep=""))
 # oos slave script
 source(paste(repo_base_path, "/", "core_quoter_slave_release.r", sep=""))
-
-# -------------------------------------------------
-# Auto margin calibration
-# -------------------------------------------------
-calibrate_margin_range <- function(prices,
-                                   normalized.signal.vector,
-                                   margin.inv.vector,
-                                   margin.inv.slope,
-                                   tick.size.a,
-                                   tick.size.b,
-                                   fx.a,
-                                   fx.b,
-                                   min_crossings,
-                                   max_crossings,
-                                   max_range = 5000,   # keep default
-                                   stepback.factors = c(0.5, 0.75, 0.9999)) {
-
-  cat("\n[Calibration] --- Starting margin calibration ---\n")
-
-  # --- construct signal prices ---
-  signal.prices <- cbind(
-    prices[,"bid.a"] * normalized.signal.vector[1] +
-      prices[,"ask.b"] * normalized.signal.vector[2],
-    prices[,"ask.a"] * normalized.signal.vector[1] +
-      prices[,"bid.b"] * normalized.signal.vector[2]
-  )
-
-  theo.price <- mean(c(signal.prices[,1], signal.prices[,2]), na.rm=TRUE)
-  cat("[Calibration] theo.price =", theo.price, "\n")
-  cat("[Calibration] min_crossings =", min_crossings,
-      "| max_crossings =", max_crossings, "\n")
-
-  # --- build exploration sets ---
-  finer_region    <- seq(4, 20, by = 4)
-  fine_region     <- seq(20, 100, by = 10)
-  coarse_region   <- seq(100, 1000, by = 50)
-  coarser_region  <- seq(1000, max_range, by = 200)
-  coarse_levels   <- unique(c(finer_region, fine_region, coarse_region, coarser_region))
-
-  cat("[Calibration] candidate relative margins (multipliers) =",
-      paste(coarse_levels, collapse = ", "), "\n")
-
-  # --- compute minimum spreads (same as in loop) ---
-  idx.bid.ask.not.null.a <- which(prices[,"bid.a"] < prices[,"ask.a"])
-  idx.bid.ask.not.null.b <- which(prices[,"bid.b"] < prices[,"ask.b"])
-
-  minimum.spreads <- c(
-    min(prices[idx.bid.ask.not.null.a,"ask.a"] - prices[idx.bid.ask.not.null.a,"bid.a"], na.rm=TRUE),
-    min(prices[idx.bid.ask.not.null.b,"ask.b"] - prices[idx.bid.ask.not.null.b,"bid.b"], na.rm=TRUE)
-  )
-
-  # --- base margin (identical to loop logic) ---
-  base.margin <- max(
-    abs(normalized.signal.vector[1] * minimum.spreads[1]/fx.a),
-    abs(normalized.signal.vector[2] * minimum.spreads[2]/fx.b)
-  )
-  cat("[Calibration] base.margin =", base.margin, "\n")
-
-  # --- evaluate all candidates across stepback factors ---
-  test_scores <- sapply(coarse_levels, function(margin_candidate) {
-    margin <- base.margin * margin_candidate
-
-    scores_per_stepback <- sapply(stepback.factors, function(sb) {
-      stepback <- sb * margin
-      dPrice <- generateCrossing(signal.prices[,1], signal.prices[,2],
-                                 prices[,"bid.a"], prices[,"ask.a"],
-                                 prices[,"bid.b"], prices[,"ask.b"],
-                                 theo.price,
-                                 theMargin   = margin,
-                                 theStepback = stepback,
-                                 margin.inv.vector[1], margin.inv.vector[2],
-                                 margin.inv.slope,
-                                 normalized.signal.vector[1], normalized.signal.vector[2],
-                                 tick.size.a, tick.size.b)
-
-      score <- sum(dPrice$moveTheoPriceVec != 0)
-
-      if (score < min_crossings || score > max_crossings) {
-        return(-Inf)
-      } else {
-        return(score)
-      }
-    })
-
-    best_score <- max(scores_per_stepback)
-    return(best_score)
-  })
-
-  cat("[Calibration] test_scores by margin:\n")
-  print(data.frame(
-    margin_rel = coarse_levels,
-    margin_abs = coarse_levels * base.margin,
-    score = test_scores
-  ))
-
-  # --- choose best ---
-  if (all(is.infinite(test_scores))) {
-    # fallback: select margin whose raw crossings are closest to the band
-    raw_scores <- sapply(coarse_levels, function(margin_candidate) {
-      margin <- base.margin * margin_candidate
-      stepback <- max(stepback.factors) * margin
-      dPrice <- generateCrossing(signal.prices[,1], signal.prices[,2],
-                                 prices[,"bid.a"], prices[,"ask.a"],
-                                 prices[,"bid.b"], prices[,"ask.b"],
-                                 theo.price,
-                                 theMargin   = margin,
-                                 theStepback = stepback,
-                                 margin.inv.vector[1], margin.inv.vector[2],
-                                 margin.inv.slope,
-                                 normalized.signal.vector[1], normalized.signal.vector[2],
-                                 tick.size.a, tick.size.b)
-      return(sum(dPrice$moveTheoPriceVec != 0))
-    })
-
-    dist_to_band <- sapply(raw_scores, function(x) {
-      if (x < min_crossings) return(min_crossings - x)  # below band
-      if (x > max_crossings) return(x - max_crossings)  # above band
-      return(0)
-    })
-
-    best_idx   <- which.min(dist_to_band)
-    best_margin <- coarse_levels[best_idx]
-    best_abs    <- best_margin * base.margin
-    cat("[Calibration] ⚠️ WARNING: no valid margins in criteria, fallback to closest-to-band crossings =",
-        best_margin, "| absolute =", best_abs, "| raw crossings =", raw_scores[best_idx], "\n")
-
-    # refine around fallback best_margin
-    if (best_margin %in% finer_region) {
-      step_size <- 2
-    } else if (best_margin %in% fine_region) {
-      step_size <- 10
-    } else if (best_margin %in% coarse_region) {
-      step_size <- 30
-    } else if (best_margin %in% coarser_region) {
-      step_size <- 200
-    } else {
-      step_size <- 200
-    }
-    candidates <- seq(best_margin - 2*step_size,
-                      best_margin + 2*step_size,
-                      by = step_size)
-    fine_range <- candidates[candidates > 0 & candidates <= max_range]
-
-  } else {
-    best_margin <- coarse_levels[which.max(test_scores)]
-    best_abs    <- best_margin * base.margin
-    cat("[Calibration] ✅ Best relative margin found =", best_margin,
-        "| absolute =", best_abs,
-        "| score =", max(test_scores, na.rm=TRUE), "\n")
-
-    # Decide step size based on region
-    if (best_margin %in% finer_region) {
-      step_size <- 2
-    } else if (best_margin %in% fine_region) {
-      step_size <- 10
-    } else if (best_margin %in% coarse_region) {
-      step_size <- 30
-    } else if (best_margin %in% coarser_region) {
-      step_size <- 200
-    } else {
-      step_size <- 200
-    }
-
-    candidates <- seq(best_margin - 2*step_size,
-                      best_margin + 2*step_size,
-                      by = step_size)
-    fine_range <- candidates[candidates > 0 & candidates <= max_range]
-  }
-
-  cat("[Calibration] Refined search grid (relative) =",
-      paste(fine_range, collapse = ", "), "\n")
-  cat("[Calibration] Refined search grid (absolute) =",
-      paste(round(fine_range * base.margin, 4), collapse = ", "), "\n")
-  cat("[Calibration] --- Calibration complete ---\n\n")
-
-  return(fine_range)
-}
-
-
-
 ###########  Setup configuration parameters
 ###########  Grid parameters
 
-# relative.margin.range    <- seq(from=config_file$grid$margin_range[1], to=config_file$grid$margin_range[2], by=config_file$grid$margin_range_step)
-# relative.margin.range <- fine_range
+relative.signal.angle.range   <- seq(from=config_file$grid$signal_angle_range[1], to=config_file$grid$signal_angle_range[2], by=config_file$grid$signal_angle_range_step)
+relative.margin.range    <- seq(from=config_file$grid$margin_range[1], to=config_file$grid$margin_range[2], by=config_file$grid$margin_range_step)
 relative.step.back.range      <- c(config_file$grid$step_back_range[1], config_file$grid$step_back_range[2], config_file$grid$step_back_range[3])#c(0.5, 0.75, .9999)
 relative.trading.angle.range  <- c(0, seq(from=config_file$grid$trading_angle_range[1], to=config_file$grid$trading_angle_range[2], by=config_file$grid$trading_angle_range_step))
 relative.order.size.range     <- config_file$grid$order_size_range
@@ -283,6 +103,7 @@ num.crossing.2.limit.range    <- seq(from=config_file$grid$crossing_to_limit_ran
 # single/production run
 if(config_file$single_run_param$run) {
 
+  relative.signal.angle.range   <- config_file$single_run_param$signal_angle
   relative.margin.range         <- config_file$single_run_param$margin
   relative.step.back.range      <- config_file$single_run_param$step_back
   relative.trading.angle.range  <- config_file$single_run_param$trading_angle
@@ -395,6 +216,14 @@ for(z in 1:length(product.names.lst)) {
     # check that data source is available, skip otherwise
     if(length(is.dates.vect)==0 || length(oos.dates.vect)==0) next
 
+    ###########  Display progress bar for each pair
+
+    # loop over all grid of parameters -> brut force calculation, keep track of run id
+    num.loops               <- length(relative.signal.angle.range) * length(relative.margin.range) * length(relative.step.back.range) *
+      length(relative.trading.angle.range) * length(relative.order.size.range) * length(num.crossing.2.limit.range)
+    iter.num                <- 1
+    num.optima              <- 0
+
     ###########  naming convention
     product.name.std.a  <- paste(toupper(gsub("-", "_", product.names[1])), "_", instrument.type[1], "_", toupper(exchange.names[1]), sep="")
     product.name.std.b  <- paste(toupper(gsub("-", "_", product.names[2])), "_", instrument.type[2], "_", toupper(exchange.names[2]), sep="")
@@ -451,6 +280,7 @@ for(z in 1:length(product.names.lst)) {
                         length(prices.bbo.a.b.oos[,"time_seconds"]))
 
       # for daily sharpe calculation
+      # JF: TO BE UPDATED 20250801
       daily.date.is     <- unique(substr(as.POSIXct(prices.bbo.a.b[,"time_seconds"]/1000, origin="1970-01-01"),1,10))
       daily.date        <- unique(substr(as.POSIXct(prices.bbo.a.b.oos[,"time_seconds"]/1000, origin="1970-01-01"),1,10))
     } else {
@@ -460,142 +290,23 @@ for(z in 1:length(product.names.lst)) {
 
     ###########  Compute best cointegration direction based on linear regression
 
-    # use full sample for regression
+    # linear regression used to validate direction of integration AND data quality test...
+
+    # validation will be made oos period...to prevent (too much) overfitting
     regression.length <- nrow(prices.bbo.a.b)
 
-    # === compute regression slope ===
-    lm_b_a <- lm(bid.b ~ bid.a, data = head(prices.bbo.a.b, regression.length))
+    # compute regression line
+    lm_b_a = lm(bid.b~bid.a, data = head(prices.bbo.a.b, regression.length))
+
+    # check R squared
+    summary(lm_b_a)
+
     intercept.regression <- lm_b_a$coefficients[1]
     slope.regression     <- lm_b_a$coefficients[2]
-    base.direction <- 1/slope.regression
 
-    # # Convert regression slope into absolute angle (deg and rad)
-    # slope_angle_rad <- atan(slope.regression)
-    # slope_angle_deg <- slope_angle_rad * 180/pi
-    #
-    # # Distance to nearest boundary (0 or 90 deg)
-    # dist_to_edge <- min(slope_angle_deg, 90 - slope_angle_deg)
-    #
-    # # Band = 100% of distance to edge, capped at 5°
-    # band_deg <- min(dist_to_edge, 5)
-    #
-    # # Step = band/2 so that 5 values cover ±band
-    # angles_deg <- slope_angle_deg + seq(-2, 2) * (band_deg/2)
-    #
-    # # Keep only angles strictly inside (0, 90)
-    # angles_deg <- angles_deg[angles_deg > 0 & angles_deg < 90]
-    #
-    # # Convert back to relative units for loop
-    # relative.signal.angle.range <- (angles_deg*pi/180 - pi/4) / (pi/4)
-    #
-    # # --- Verbose logging ---
-    # cat(file=stderr(), "\n[Calibration] --- Signal angle setup ---\n")
-    # cat(file=stderr(), "[Calibration] regression slope =", slope.regression, "\n")
-    # cat(file=stderr(), "[Calibration] slope_angle (deg) =", round(slope_angle_deg, 6), "\n")
-    # cat(file=stderr(), "[Calibration] adaptive band (deg) = ±", round(band_deg, 6), "\n")
-    # cat(file=stderr(), "[Calibration] testing absolute signal angles (deg) =",
-    #     paste(round(angles_deg, 6), collapse = ", "), "\n")
-    # cat(file=stderr(), "[Calibration] testing relative.signal.angle.range (raw) =",
-    #     paste(round(relative.signal.angle.range, 6), collapse = ", "), "\n")
-    # cat(file=stderr(), "[Calibration] ------------------------------\n\n")
+    signal.angle         <- atan(slope.regression)*180/pi # in deg
 
-      # # Convert regression slope into absolute angle (deg and rad)
-    slope_angle_rad <- atan(slope.regression)
-    slope_angle_deg <- slope_angle_rad * 180/pi
-
-    # --- Build a stable angle grid via multiplicative β perturbations ---
-    # Baseline angle (deg) and slope β
-    theta0_deg <- slope_angle_deg
-    beta0 <- tan(theta0_deg * pi/180)
-
-    # User knobs (unchanged elsewhere):
-    r_max <- 0.60      # max relative change in β for the outer points (e.g., ±20%)
-    n_vals <- 5        # number of angles to test (keep 5 to match your ±2 setup)
-
-    # Geometric multipliers around 1, symmetric in log-space:
-    delta <- log(1 + r_max)
-    mult  <- exp(seq(-delta, delta, length.out = n_vals))
-
-    # Apply to β, map back to angles; preserve β sign automatically
-    beta_grid   <- beta0 * mult
-    angles_deg  <- atan(beta_grid) * 180/pi
-
-    # Keep strictly inside (0, 90) and add a tiny safety margin
-    eps <- 1e-6
-    angles_deg <- angles_deg[angles_deg > eps & angles_deg < 90 - eps]
-
-    # (Optional) If θ is *extremely* close to 0° or 90°, ensure at least a tiny band:
-    if (length(angles_deg) == 1) {
-      # Use local small-angle approximation: Δθ ≈ 0.5 * r_max * sin(2θ)
-      dtheta_deg <- 0.5 * r_max * sin(2 * theta0_deg * pi/180) * 180/pi
-      dtheta_deg <- max(dtheta_deg, 0.01)  # minimum 0.01°
-      angles_deg <- sort(unique(c(theta0_deg - 2*dtheta_deg,
-                                  theta0_deg - 1*dtheta_deg,
-                                  theta0_deg,
-                                  theta0_deg + 1*dtheta_deg,
-                                  theta0_deg + 2*dtheta_deg)))
-      angles_deg <- angles_deg[angles_deg > eps & angles_deg < 90 - eps]
-    }
-
-    # Convert to your relative units if needed (unchanged)
-    relative.signal.angle.range <- (angles_deg*pi/180 - pi/4) / (pi/4)
-
-    # --- Verbose logging (kept in your style) ---
-    cat(file=stderr(), "\n[Calibration] --- Stable angle grid (log-β) ---\n")
-    cat(file=stderr(), "[Calibration] slope_angle (deg) =", round(theta0_deg, 6), "\n")
-    cat(file=stderr(), "[Calibration] r_max (β rel. change) = ±", r_max, "\n")
-    cat(file=stderr(), "[Calibration] testing absolute signal angles (deg) =",
-        paste(round(angles_deg, 6), collapse = ", "), "\n")
-    cat(file=stderr(), "[Calibration] mapped β grid =",
-        paste(signif(beta_grid, 6), collapse = ", "), "\n")
-    cat(file=stderr(), "[Calibration] -----------------------------------\n\n")
-
-    # -------------------------- new -------------------------- #
-
-    # === build normalized signal vector for calibration ===
-    base.signal.angle <- atan(slope.regression)  # regression angle in radians
-    signal.vector <- c(cos(base.signal.angle), -base.direction * sin(base.signal.angle))
-    normalized.signal.vector <- signal.vector / sqrt(sum(signal.vector^2))
-
-    # === margin inverse vector ===
-    margin.inv.vector <- c(-normalized.signal.vector[2], normalized.signal.vector[1])
-    margin.inv.slope  <- margin.inv.vector[2] / margin.inv.vector[1]
-
-    # === construct signal prices (needed for calibration) ===
-    signal.prices <- cbind(
-      prices.bbo.a.b[,"bid.a"] * normalized.signal.vector[1] +
-        prices.bbo.a.b[,"ask.b"] * normalized.signal.vector[2],
-      prices.bbo.a.b[,"ask.a"] * normalized.signal.vector[1] +
-        prices.bbo.a.b[,"bid.b"] * normalized.signal.vector[2]
-    )
-
-    theo.price <- mean(signal.prices[1,])
-
-    # === run calibration to set relative.margin.range ===
-     relative.margin.range <- calibrate_margin_range(
-       prices = prices.bbo.a.b,
-       normalized.signal.vector = normalized.signal.vector,
-       margin.inv.vector = margin.inv.vector,
-       margin.inv.slope = margin.inv.slope,
-       tick.size.a = tick.size.a,
-       tick.size.b = tick.size.b,
-       fx.a = fx.a,
-       fx.b = fx.b,
-       min_crossings = MIN_CROSSING,
-       max_crossings = MIN_CROSSING*3
-     )
-
-    # relative.margin.range    <- seq(from=10, to=100, by=10)
-
-    # -------------------------- end new -------------------------- #
-
-    ###########  Display progress bar for each pair
-
-    # loop over all grid of parameters -> brut force calculation, keep track of run id
-    num.loops               <- length(relative.signal.angle.range) * length(relative.margin.range) * length(relative.step.back.range) *
-      length(relative.trading.angle.range) * length(relative.order.size.range) * length(num.crossing.2.limit.range)
-    iter.num                <- 1
-    num.optima              <- 0
+    base.direction        <- 1/slope.regression
 
     ###########  max bid-ask filter -> not used as maker...
 
@@ -672,12 +383,16 @@ for(z in 1:length(product.names.lst)) {
     tickSize.b              <- min(tick.size.b*fx.b, minimum.spreads[2])
 
     ###########  Core algorithm
-
     ###########  Compute signal angle
 
+    # relative.signal.angle.range [-1, 1], representing relative signal angles used in the grid search
+    # Calculate Base Direction for signal angle and trading angle
     for(i in 1:length(relative.signal.angle.range)) {
 
       relative.signal.angle <- relative.signal.angle.range[i]
+
+      # calculated through the regression to take into account the intercept...the regression don't necessarily cross the <0;0>
+      #base.direction        <- prices.bbo.a.b[1,"bid.a"]/prices.bbo.a.b[1,"bid.b"]
 
       # base signal angle is constructed such that it is always in quadrant I
       base.signal.angle     <- relative.signal.angle*pi/4+pi/4
@@ -689,6 +404,7 @@ for(z in 1:length(product.names.lst)) {
       }
 
       # determine whether positively or negatively correlated pair
+      #if(cov.mat[1,2]<0) {
       if(FALSE) {
         # positive base direction
         signal.vector            <- c(cos(base.signal.angle), base.direction * sin(base.signal.angle))
@@ -796,6 +512,9 @@ for(z in 1:length(product.names.lst)) {
 
           for(l in 1:length(relative.trading.angle.range)) {
 
+            # If cor > 0 trading angle element 270 and 360 degres, IV quadrant
+            # If cor < 0 trading angle element 0 and 90 degres, I quadrant
+
             # Base.trading.angle is contructed such that it is always in quadrant I
             base.trading.angle        <- relative.trading.angle.range[l]*1/4*pi+1/4*pi
             #base.trading.angle        <- -0.99*1/4*pi+1/4*pi
@@ -810,6 +529,10 @@ for(z in 1:length(product.names.lst)) {
               # modif USD: order.size.range should be a percentage invesment of the contract value
               order.size                <- abs(order.size.range[m] * normalized.trading.vector)
               typical.order.size        <- order.size.range[m]
+
+              # with delta.a,b == products lot sizes (legacy, take into account lot sizes...)
+              # Q                         <- min(abs((order.size*c(delta.a, delta.b))/(normalized.trading.vector*Mean.abs.dp)))
+              # raw.order.org             <- cbind(-Q*dPrice$moveTheoPriceVec[idx.occurence],-Q*dPrice$moveTheoPriceVec[idx.occurence])%*%diag(normalized.trading.vector)
 
               ###########  RM - SAG - i.e. number of crossing...prevent martingal mechanism...
 
@@ -918,6 +641,8 @@ for(z in 1:length(product.names.lst)) {
 
                   ###########################################################################################################
                   ###########  PnL calculation -> Version 3.0
+                  ###########  Inverse swap -> i.e. coin margined products
+                  ###########  hedge accumulation spot inventory daily
                   ###########################################################################################################
 
                   # loop through days and compute intraday cummulative pnl
@@ -963,6 +688,9 @@ for(z in 1:length(product.names.lst)) {
 
                     # check that at least one crossing occured during that day
                     if(any(idx.xing.day)) {
+
+                      # compute intraday cummulative pnl for that day
+                      #print(w)
 
                       # beware if there is only one crossing that day...not a matrix but a vector...
                       if(length(idx.xing.day)==1) {
@@ -1128,30 +856,15 @@ for(z in 1:length(product.names.lst)) {
                                                  t.fees.taker.b,
                                                  type.a,
                                                  type.b,
+                                                 # path2root,
+                                                 # path2util,
                                                  is.daily.hedged,
                                                  idx.oos.eod,
                                                  daily.date)
 
+
                 # legacy
                 pnl.wo.mh.oos <- pnl.wo.mh.oos.lst$pnl.wo.mh
-
-                # Always export PnL surface, even if bad
-                if(is.export.pnl.surface) {
-                  titl <- paste(normalized.signal.vector[1],"#",normalized.signal.vector[2],"#",margin,"#",
-                                stepback,"#",normalized.trading.vector[1],"#", normalized.trading.vector[2],"#",
-                                order.size.range[m],"#",num.crossing.2.limit.range[n], sep="")
-
-                  if(length(pnl.wo.mh.oos) == 0) {
-                    # create a zero series aligned to OOS timestamps
-                    pnl.util.surface[[titl]] <- zoo(rep(0, nrow(prices.bbo.a.b.oos)),
-                                                    order.by=prices.bbo.a.b.oos[,"time_seconds"])
-                  } else {
-                    idx.seq.oos <- trunc(seq(from = 1, to = nrow(prices.bbo.a.b.oos), length.out = length(pnl.wo.mh.oos)))
-                    pnl.util.surface[[titl]] <- zoo(pnl.wo.mh.oos, order.by=prices.bbo.a.b.oos[idx.seq.oos,"time_seconds"])
-                  }
-                }
-
-
 
                 num.crossing_oos <- sum(diff(pnl.wo.mh.oos) != 0)
 
@@ -1253,7 +966,15 @@ for(z in 1:length(product.names.lst)) {
 
                 }
 
+                if(is.export.pnl.surface) {
+                  titl <- paste(normalized.signal.vector[1],"#",normalized.signal.vector[2],"#",margin,"#",
+                                stepback,"#",normalized.trading.vector[1],"#", normalized.trading.vector[2],"#",
+                                order.size.range[m],"#",num.crossing.2.limit.range[n], sep="")
 
+                  # Use OUT-OF-SAMPLE pnl instead of IS
+                  idx.seq.oos <- trunc(seq(from = 1, to = nrow(prices.bbo.a.b.oos), length.out = length(pnl.wo.mh.oos)))
+                  pnl.util.surface[[titl]] <- zoo(pnl.wo.mh.oos, order.by=prices.bbo.a.b.oos[idx.seq.oos,"time_seconds"])
+                }
 
                 status.log <- paste(relative.signal.angle.range[i],"#",relative.margin.range[j],"#",relative.step.back.range[k],"#",
                                     relative.trading.angle.range[l],"#",relative.order.size.range[m],"#",num.crossing.2.limit.range[n],

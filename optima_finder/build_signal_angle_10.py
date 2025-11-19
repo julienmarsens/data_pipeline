@@ -1,9 +1,23 @@
 #!/usr/bin/env python3
 
-from pathlib import Path
 import numpy as np, pandas as pd, matplotlib.pyplot as plt, matplotlib.dates as mdates
-from matplotlib.backends.backend_pdf import PdfPages
-from matplotlib.colors import to_rgb
+
+import os
+from ruamel.yaml import YAML
+from pathlib import Path
+
+
+yaml = YAML(typ="rt")
+yaml.preserve_quotes = True
+yaml.width = 10 ** 6
+
+def atomic_write_yaml(data, out_yml: Path):
+    tmp_file = out_yml.with_suffix(out_yml.suffix + ".tmp")
+    with open(tmp_file, "w") as f:
+        yaml.dump(data, f)
+        f.flush()             # flush Python buffer
+        os.fsync(f.fileno())  # flush OS buffer
+    tmp_file.replace(out_yml)  # atomic rename
 
 # ───────────────── helper utilities ────────────────────────────────
 def _lighten(c, amt=.55):
@@ -178,12 +192,22 @@ def make_signal_angle_figure(
     return fig
 
 # ───────────────── main driver ─────────────────────────────────────
+#!/usr/bin/env python3
+
+from pathlib import Path
+import numpy as np, pandas as pd, matplotlib.pyplot as plt, matplotlib.dates as mdates
+from matplotlib.backends.backend_pdf import PdfPages
+from matplotlib.colors import to_rgb
+
+
+# ───────────────── main driver ─────────────────────────────────────
 def loop_over_pairs(pairs,
                     rolling_angle_windows_in_days: int = 10,
                     vol_window_minutes: int = 60,
                     fitting_dates=None,
                     top_n: int = 30
                     ):
+
     data_path = Path('./optima_finder/local_data/spread_data')
     pdf_dir = Path('./optima_finder/results')
     out_pdf   = pdf_dir / 'signal_angles_report_ranked.pdf'
@@ -218,12 +242,45 @@ def loop_over_pairs(pairs,
 
     if not rec:
         print('No valid pairs'); return
+
+    # sort by stability score
     rec.sort(key=lambda r: r[0])
-    rec = rec[:top_n]
+
+    # Attach ranking index (1-based)
+    rec = [(i+1, *r) for i, r in enumerate(rec)]
+
+    # ── NEW FILTER: enforce uniqueness but guarantee top_n ─────────────
+    selected = []
+    asset_counts = {}
+
+    # Pass 1: take unique pairs (each asset only once)
+    for rank, score, (a1, a2), df, highlight in rec:
+        if asset_counts.get(a1, 0) == 0 and asset_counts.get(a2, 0) == 0:
+            selected.append((rank, score, (a1, a2), df, highlight))
+            asset_counts[a1] = asset_counts.get(a1, 0) + 1
+            asset_counts[a2] = asset_counts.get(a2, 0) + 1
+        if len(selected) >= top_n:
+            break
+
+    # Pass 2: relax restriction if fewer than top_n
+    if len(selected) < top_n:
+        for rank, score, (a1, a2), df, highlight in rec:
+            if (rank, score, (a1, a2), df, highlight) in selected:
+                continue
+            if asset_counts.get(a1, 0) < 2 and asset_counts.get(a2, 0) < 2:
+                selected.append((rank, score, (a1, a2), df, highlight))
+                asset_counts[a1] = asset_counts.get(a1, 0) + 1
+                asset_counts[a2] = asset_counts.get(a2, 0) + 1
+            if len(selected) >= top_n:
+                break
+        print(f"⚠️ Not enough unique pairs, filled up to {top_n} with duplicates (max 2 uses per asset).")
+
+    rec = selected
+    # ───────────────────────────────────────────────────────────────────
 
     pairs_out = []
     with PdfPages(out_pdf) as pdf:
-        for score, (a1, a2), df, highlight in rec:
+        for rank, score, (a1, a2), df, highlight in rec:
             fig = make_signal_angle_figure(
                 df,
                 f'{a1} – {a2}',
@@ -235,13 +292,11 @@ def loop_over_pairs(pairs,
             pdf.savefig(fig); plt.close(fig)
 
             pairs_out.append([a1, a2])
-            print(f'✓ {a1}-{a2}')
+            print(f'#{rank:02d} (score={score:.4f}) ✓ {a1}-{a2}')
 
-    with open(out_yml, "w") as f:
-        f.write("pairs: " + str(pairs_out) + "\n")
-
-    print(f'\n📄  PDF saved to: {out_pdf.resolve()}')
-    print(f'📊  Pairs YAML saved to: {out_yml.resolve()}')
+    atomic_write_yaml({"pairs": pairs_out}, out_yml)
+    print(f"\n📄 PDF saved to: {out_pdf.resolve()}")
+    print(f"📊 Pairs YAML saved to: {out_yml.resolve()}")
 
 # Example direct run
 if __name__ == '__main__':

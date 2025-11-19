@@ -3,23 +3,7 @@ import pandas as pd
 from datetime import datetime, timedelta
 from ruamel.yaml import YAML
 
-# === Load configs ===
-yaml = YAML(typ="rt")
-yaml.preserve_quotes = True
-yaml.width = 10 ** 6
 
-with open('./common/config/local_path.yml', 'r') as f:
-    local_config = yaml.load(f)
-
-with open('./optima_finder/results/optima_finder_pairs.yml', 'r') as f:
-    optima_finder_pairs_config = yaml.load(f)
-
-# === CONFIGURATION ===
-pairs_to_sync = optima_finder_pairs_config["pairs"]
-
-# Input raw data folder (with subfolders per date)
-RAW_DATA_DIR = local_config["paths"]["data_path"]
-SYNC_DATA_DIR = os.path.join(RAW_DATA_DIR, "sync_market_data")
 
 
 # === SYMBOL MAP (exchange filenames) ===
@@ -47,6 +31,24 @@ def normalize_timestamp(ts: pd.Series) -> pd.Series:
 
 # === MAIN SCRIPT ===
 def sync_pairs(start_date, end_date):
+    # === Load configs ===
+    yaml = YAML(typ="rt")
+    yaml.preserve_quotes = True
+    yaml.width = 10 ** 6
+
+    with open('./common/config/local_path.yml', 'r') as f:
+        local_config = yaml.load(f)
+
+    with open('./optima_finder/results/optima_finder_pairs.yml', 'r') as f:
+        optima_finder_pairs_config = yaml.load(f)
+
+    # === CONFIGURATION ===
+    pairs_to_sync = optima_finder_pairs_config["pairs"]
+
+    # Input raw data folder (with subfolders per date)
+    RAW_DATA_DIR = local_config["paths"]["data_path"]
+    SYNC_DATA_DIR = os.path.join(RAW_DATA_DIR, "sync_market_data")
+
     os.makedirs(SYNC_DATA_DIR, exist_ok=True)
 
     start = datetime.strptime(start_date, "%Y-%m-%d").date()
