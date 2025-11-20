@@ -896,15 +896,11 @@ for(z in 1:length(product.names.lst)) {
                   toupper(gsub("usd-perp", "USDT", x))   # e.g. "dogeusd-perp" -> "DOGEUSDT"
                 }
 
-                theoretical.max.inv <- abs(num.crossing.2.limit.range[n] * relative.order.size.range[m] * normalized.trading.vector)
-
                 pair_key <- paste0("[", clean_name(product.names[1]), ", ", clean_name(product.names[2]), "]")
 
                 stats.list[[pair_key]] <- list(
                   max_drawdown = max.dd,
-                  stop_loss = as.numeric(args[9]) * tail(pnl.wo.mh.oos, 1),
-                  max_inventory = c(max.inv.a, max.inv.b),
-                  max_possible_inventory = theoretical.max.inv   # <-- NEW LINE
+                  max_inventory = c(max.inv.a, max.inv.b)
                 )
 
                 cat(file=stderr(), paste("[",Sys.time(),"]",
@@ -1063,24 +1059,15 @@ port_rnd = add.objective(portfolio = port_rnd, type = "return", name = "mean")
 returns.daily     <- aggregate(returns, by=list(substr(time(returns),1,10)), sum)
 returns.daily.zoo <- zoo(coredata(returns.daily), as.Date(as.character(time(returns.daily)) ))
 
-# --- skipped for now --- #
+opt_minvar = optimize.portfolio(R = returns, portfolio = port_rnd, optimize_method = "random",
+                                trace = TRUE, search_size = 40000)
+# plot
+chart.RiskReward(opt_minvar, risk.col = "StdDev", return.col = "mean", chart.assets = TRUE)  #also plots the equally weighted portfolio
 
-# opt_minvar = optimize.portfolio(R = returns, portfolio = port_rnd, optimize_method = "random",
-#                                 trace = TRUE, search_size = 40000)
-# # plot
-# chart.RiskReward(opt_minvar, risk.col = "StdDev", return.col = "mean", chart.assets = TRUE)  #also plots the equally weighted portfolio
-#
-# # Extract the optimal weights
-# extractWeights(opt_minvar)
-#
-# opt_weights <- extractWeights(opt_minvar)
+# Extract the optimal weights
+extractWeights(opt_minvar)
 
-# ------------------------ #
-
-# Instead of optimization, assign equal weights to each pair
-n_pairs <- ncol(returns)
-opt_weights <- rep(1 / n_pairs, n_pairs)
-names(opt_weights) <- colnames(returns)
+opt_weights <- extractWeights(opt_minvar)
 
 # Build result summary
 # Build result summary
@@ -1096,31 +1083,31 @@ write_json(result_summary,
            path = file.path(path_to_json_results, "optimization_results.json"),
            pretty = TRUE, auto_unbox = TRUE)
 
-# print(opt_minvar)
-#
-# r_minvar <- Return.portfolio(R = returns.daily.zoo, weights = extractWeights(opt_minvar))
-# colnames(r_minvar) <- "opt_minvar"
-#
-# # Plot the  minvar returns
-# # barplot(r_minvar)
-#
-# #####################################
-# # benchmark - equal weights
-# # Create a vector of equal weights
-# equal_weights <- rep(1 / ncol(returns.daily.zoo), ncol(returns.daily.zoo))
-#
-# # Compute the benchmark returns
-# r_benchmark <- Return.portfolio(R = returns.daily.zoo, weights = equal_weights)
-# colnames(r_benchmark) <- "benchmark"
-#
-# # Plot the benchmark returns
-# # barplot(r_benchmark)
-#
-# # Combine the returns
-# ret <- cbind(r_benchmark, r_minvar)
-#
-# # Compute annualized returns
-# table.AnnualizedReturns(R = ret)
-#
-# # Chart the performance summary
-# charts.PerformanceSummary(R = ret)
+print(opt_minvar)
+
+r_minvar <- Return.portfolio(R = returns.daily.zoo, weights = extractWeights(opt_minvar))
+colnames(r_minvar) <- "opt_minvar"
+
+# Plot the  minvar returns
+# barplot(r_minvar)
+
+#####################################
+# benchmark - equal weights
+# Create a vector of equal weights
+equal_weights <- rep(1 / ncol(returns.daily.zoo), ncol(returns.daily.zoo))
+
+# Compute the benchmark returns
+r_benchmark <- Return.portfolio(R = returns.daily.zoo, weights = equal_weights)
+colnames(r_benchmark) <- "benchmark"
+
+# Plot the benchmark returns
+# barplot(r_benchmark)
+
+# Combine the returns
+ret <- cbind(r_benchmark, r_minvar)
+
+# Compute annualized returns
+table.AnnualizedReturns(R = ret)
+
+# Chart the performance summary
+charts.PerformanceSummary(R = ret)

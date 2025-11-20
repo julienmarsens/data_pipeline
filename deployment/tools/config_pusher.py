@@ -18,17 +18,18 @@ def run():
 
     optimization_weights = data["optimization_weights"]
 
-    # Order absolute_parameters by pair_1, pair_2, ...
-    abs_params = [v for k, v in sorted(
-        data["absolute_parameters"].items(),
-        key=lambda kv: int(kv[0].split("_")[1])
-    )]
-
-    # Extract max_inventory in the same order
+    # Sort absolute_parameters by pair_1, pair_2, ...
     pair_keys = sorted(data["absolute_parameters"].keys(),
                        key=lambda x: int(x.split("_")[1]))
-    max_stats = list(data["max_stats"].values())
-    max_inventory = [max_stats[i]["max_inventory"] for i in range(len(pair_keys))]
+
+    abs_params = [data["absolute_parameters"][k] for k in pair_keys]
+
+    # Extract max_inventory and stop_loss in the same order as absolute_parameters
+    max_inventory = []
+    stop_losses = []
+    for v in data["max_stats"].values():
+        max_inventory.append(v["max_inventory"])
+        stop_losses.append(v["stop_loss"])
 
     # Load YAML file
     with open(yml_path, "r") as f:
@@ -36,10 +37,13 @@ def run():
 
     # Wrap lists in CommentedSeq to force flow style
     sig_seq = CommentedSeq(abs_params)
-    sig_seq.fa.set_flow_style()  # <- keep [ ... ] format
+    sig_seq.fa.set_flow_style()
 
     inv_seq = CommentedSeq(max_inventory)
     inv_seq.fa.set_flow_style()
+
+    stop_seq = CommentedSeq(stop_losses)
+    stop_seq.fa.set_flow_style()
 
     weights_seq = CommentedSeq(optimization_weights)
     weights_seq.fa.set_flow_style()
@@ -47,6 +51,7 @@ def run():
     # Update only autofill sections
     yml_data["signature"] = sig_seq
     yml_data["backtest_max_inventory"] = inv_seq
+    yml_data["backtest_stop_loss"] = stop_seq
     yml_data["optimization_weights"] = weights_seq
 
     # Write YAML back (preserve format + comments)

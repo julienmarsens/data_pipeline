@@ -14,6 +14,9 @@ from deployment.tools.trade_size_and_account import TradeSizeAccount
 
 class DeploymentPipeline():
 
+	TODO: "split au minimum 1 pair sur 1 compte, pas tout sur les 2 premier |" \
+	      " aller chercher ce qui est en prod sur le compte pour pas redloyer meme asset avec ce qui est deja en prod |" \
+
 	# python3 -m deployment
 
 	# config_version = str(sys.argv[1])
@@ -39,6 +42,8 @@ class DeploymentPipeline():
 	_parameters = config_to_deploy["parameters"]
 	model_fitting_dates = config_to_deploy["model_fitting_dates"]
 	validation_dates = config_to_deploy["validation_dates"]
+
+	stop_loss_x_of_total_pnl = config_to_deploy["stop_loss_x_of_total_pnl"]
 
 	if run_optimization:
 
@@ -89,7 +94,8 @@ class DeploymentPipeline():
 			perso_disk_path,
 
 			r_pairs_str,
-			json_parameters
+			json_parameters,
+			str(stop_loss_x_of_total_pnl)
 
 		]
 
@@ -118,7 +124,6 @@ class DeploymentPipeline():
 			yaml.dump(mapping, f)
 
 	if update_trader_naming_convention:
-
 		google_sheet_connector.update_last_naming()
 
 	if trade_size_and_account_split:

@@ -19,6 +19,13 @@ class TradeSizeAccount:
         self.deployment_percentage = self.config["deployment_percentage"]
         self.pairs = self.config["pairs"]
         self.backtest_max_inventory = self.config["backtest_max_inventory"]
+        self.backtest_stop_loss = self.config["backtest_stop_loss"]  # <-- NEW
+
+        if len(self.backtest_stop_loss) != len(self.pairs):  # <-- NEW
+            raise ValueError(
+                f"backtest_stop_loss length ({len(self.backtest_stop_loss)}) "
+                f"must match pairs length ({len(self.pairs)})."
+            )
 
         gross_exposures = [sum(inv) for inv in self.backtest_max_inventory]
         self.denom = sum(
@@ -57,8 +64,25 @@ class TradeSizeAccount:
         ]
         return trade_sizes
 
+    def compute_stop_losses(self, assets_usd_equivalent, max_leverage_x):  # <-- NEW
+        """Scale stop losses per pair with the same multiplier used for trade sizes"""
+        max_usd_exposure = assets_usd_equivalent * max_leverage_x
+        k = max_usd_exposure / self.denom
+        deployment_factor = self.deployment_percentage / 100.0
+
+        stop_losses = [
+            round(self.backtest_stop_loss[i] * k * w * deployment_factor, -1)
+            for i, w in enumerate(self.optimization_weights)
+        ]
+        return stop_losses
+
     def _to_flow_seq(self, items):
         """Convert Python list (or nested list) to ruamel flow-style [a, b] or [[a, b], [c, d]]"""
+        if not items:  # empty list
+            seq = CommentedSeq([])
+            seq.fa.set_flow_style()
+            return seq
+
         if isinstance(items[0], list):  # nested list
             seq = CommentedSeq([CommentedSeq(sub) for sub in items])
             for sub in seq:
@@ -77,26 +101,32 @@ class TradeSizeAccount:
             max_leverage_x = kernel_data["constrain"]["max_leverage_x"]
 
             trade_sizes = self.compute_trade_sizes(assets_usd_equivalent, max_leverage_x)
+            stop_losses = self.compute_stop_losses(assets_usd_equivalent, max_leverage_x)  # <-- NEW
 
             pair_to_size = {tuple(self.pairs[i]): trade_sizes[i] for i in range(len(self.pairs))}
+            pair_to_stop = {tuple(self.pairs[i]): stop_losses[i] for i in range(len(self.pairs))}  # <-- NEW
 
             for idx, account_pairs in enumerate(accounts_split, start=1):
                 nested_pairs = []
                 nested_sizes = []
+                nested_stops = []  # <-- NEW
                 for pair in account_pairs:
                     size = pair_to_size[tuple(pair)]
+                    stop = pair_to_stop[tuple(pair)]  # <-- NEW
                     nested_pairs.append(pair)
                     nested_sizes.append([size] * len(pair))
+                    nested_stops.append([stop] * len(pair))  # <-- NEW
 
                 kernel_data[f"account_{idx}"]["pairs"] = self._to_flow_seq(nested_pairs)
                 kernel_data[f"account_{idx}"]["trade_size"] = self._to_flow_seq(nested_sizes)
+                kernel_data[f"account_{idx}"]["backtest_stop_loss"] = self._to_flow_seq(nested_stops)  # <-- NEW
 
         with open('./deployment/config/mapping.yml', 'w') as f:
             self.yaml.dump(self.mapping, f)
 
     def run(self):
         self.update_mapping()
-        print("✅ mapping.yml updated with scaled trade_size (deployment % applied)")
+        print("✅ mapping.yml updated with scaled trade_size & backtest_stop_loss (deployment % applied)")  # <-- NEW message
 
 
 if __name__ == "__main__":
