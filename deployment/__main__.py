@@ -20,7 +20,6 @@ class DeploymentPipeline():
 	      " aller chercher ce qui est en prod sur le compte pour pas redloyer meme asset avec ce qui est deja en prod |" \
 
 	# python3 -m deployment
-
 	# config_version = str(sys.argv[1])
 
 	yaml = YAML(typ="rt")  # round-trip (preserve formatting/comments)

@@ -9,17 +9,17 @@ import pandas as pd
 _path = "./funding_rate/local_data/merged"
 
 download_data = False
-plot_data = False
+plot_data = True
 _backtest = True
 
 assets = ["BTC", "ETH", "SOL", "DOGE", "XRP"]
 
 # backtest parameters
 
-investment = 1_000_000  # USD
-leverage = 4
+investment = 100_000  # USD
+leverage = 5
 annual_borrow_rate = 0.035  # 3.5% per year
-_asset = "BTC"
+_asset = "DOGE"
 trading_fees_bps = 10
 number_of_hours = 6000
 

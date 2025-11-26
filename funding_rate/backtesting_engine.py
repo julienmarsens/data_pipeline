@@ -9,7 +9,7 @@ def backtest_spot_perp_basis(
     investment,
     leverage,
     annual_borrow_rate,
-    fee_bps=20,
+    fee_bps,
     asset_name="ASSET",
     plot=True,
 ):
@@ -34,15 +34,15 @@ def backtest_spot_perp_basis(
     notional_usd = investment * leverage  # size per leg in USD
 
     # Quantities in coins
-    qty_spot = notional_usd / spot0
-    qty_perp = notional_usd / perp0  # short this on perp
+    qty_spot = notional_usd / spot0              # long this on spot
+    qty_perp = notional_usd / perp0              # short this on perp
 
     # Trading fees (charged on notional of each leg)
     fee_rate = fee_bps / 10_000.0  # 20 bps => 0.002
     trading_fees = notional_usd * fee_rate * 2.0  # spot + perp
 
     # Borrowed capital (for leveraged spot)
-    borrowed_usd = notional_usd - investment
+    borrowed_usd = max(0.0, notional_usd - investment)  # guard if leverage <= 1
 
     # ----------------------------------------------------------------------
     # 2) PRICE PNL (MARK-TO-MARKET)
@@ -57,18 +57,16 @@ def backtest_spot_perp_basis(
 
     # ----------------------------------------------------------------------
     # 3) FUNDING PNL (APPLY ONLY WHEN fundingEvent != 0)
-    # Longs pay shorts when fundingRate > 0 → we are short perp → receive.
-    # fundingEvent is assumed to be 0 except at event times,
-    # and equal to the funding rate for that event.
+    #    Correctly use *current* perp notional, not fixed initial notional.
     # ----------------------------------------------------------------------
-    # Per-event funding cashflow in USD:
-    funding_pnl_events = notional_usd * df["fundingEvent"]
+    perp_notional_t = qty_perp * perp_close  # USD notional over time
+
+    funding_pnl_events = perp_notional_t * df["fundingEvent"]
     funding_pnl_cum = funding_pnl_events.cumsum()
 
     # ----------------------------------------------------------------------
     # 4) BORROW INTEREST (CONTINUOUS OVER TIME)
     # ----------------------------------------------------------------------
-    # Compute dt in days between bars
     idx = df.index.to_series()
     dt_days = idx.diff().dt.total_seconds() / 86400.0
     dt_days.iloc[0] = 0.0
@@ -91,7 +89,6 @@ def backtest_spot_perp_basis(
     # ----------------------------------------------------------------------
     # 6) SPREAD IN PERCENT
     # ----------------------------------------------------------------------
-    # Perp vs spot basis: (perp / spot - 1) * 100
     spread_pct = (perp_close / spot_close - 1.0) * 100.0
     df["spread_pct"] = spread_pct
     df["equity"] = equity
@@ -101,9 +98,6 @@ def backtest_spot_perp_basis(
 
     # ----------------------------------------------------------------------
     # 7) PLOTS: 3 STACKED PANELS
-    #    1) Spread (in %)
-    #    2) Funding rate
-    #    3) Equity curve
     # ----------------------------------------------------------------------
     if plot:
         fig, (ax1, ax2, ax3) = plt.subplots(
@@ -133,7 +127,6 @@ def backtest_spot_perp_basis(
         ax3.set_xlabel("Time")
         ax3.grid(alpha=0.3)
 
-        # Format x-axis
         ax3.xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m-%d"))
         plt.xticks(rotation=45)
 
