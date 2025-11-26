@@ -11,6 +11,8 @@ import deployment.tools.live_assets_data_download as live_assets_data_download
 import deployment.tools.google_sheet_connector as google_sheet_connector
 import deployment.tools.config_pusher as config_pusher
 from deployment.tools.trade_size_and_account import TradeSizeAccount
+from deployment.tools.sync_internal_market_data import sync_pairs
+
 
 class DeploymentPipeline():
 
@@ -32,6 +34,8 @@ class DeploymentPipeline():
 		mapping = yaml.load(f)
 
 	target_kernel = config_to_deploy["target_kernel"]
+
+	sync_internal_data = config_to_deploy["sync_data"]
 	run_optimization = config_to_deploy["run_optimization"]
 	update_client_account_value = config_to_deploy["update_client_account_value"]
 	update_trader_naming_convention = config_to_deploy["update_trader_naming_convention"]
@@ -44,6 +48,33 @@ class DeploymentPipeline():
 	validation_dates = config_to_deploy["validation_dates"]
 
 	stop_loss_x_of_total_pnl = config_to_deploy["stop_loss_x_of_total_pnl"]
+
+	# find earliest data and last date
+
+	# Collect ALL dates
+	all_starts = [datetime.strptime(d[0], "%Y_%m_%d").date() for d in model_fitting_dates] + \
+	             [datetime.strptime(d[0], "%Y_%m_%d").date() for d in validation_dates]
+
+	all_ends = [datetime.strptime(d[1], "%Y_%m_%d").date() for d in model_fitting_dates] + \
+	           [datetime.strptime(d[1], "%Y_%m_%d").date() for d in validation_dates]
+
+	# Compute extremes
+	global_earliest_date = min(all_starts)
+	global_latest_date = max(all_ends)
+
+	# Convert back to strings for sync_pairs
+	global_earliest_str = global_earliest_date.strftime("%Y-%m-%d")
+	global_latest_str = global_latest_date.strftime("%Y-%m-%d")
+
+	print("Global earliest:", global_earliest_str)
+	print("Global latest:", global_latest_str)
+
+
+	if sync_internal_data:
+		sync_pairs(
+			start_date=str(datetime.strptime(global_earliest_str.replace("_", "-"), "%Y-%m-%d").date()),
+			end_date=str(datetime.strptime(global_latest_str.replace("_", "-"), "%Y-%m-%d").date())
+		)
 
 	if run_optimization:
 
