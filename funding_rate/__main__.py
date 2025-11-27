@@ -9,19 +9,20 @@ import pandas as pd
 _path = "./funding_rate/local_data/merged"
 
 download_data = False
-plot_data = True
+plot_data = False
 _backtest = True
 
 assets = ["BTC", "ETH", "SOL", "DOGE", "XRP"]
+earn_yield = [0.01, 0.05, 0.055, 0.01, 0.01]
 
 # backtest parameters
 
 investment = 100_000  # USD
 leverage = 5
 annual_borrow_rate = 0.035  # 3.5% per year
-_asset = "DOGE"
+_asset_index = 2
 trading_fees_bps = 10
-number_of_hours = 6000
+number_of_hours = 4000
 
 # ------------------------------------------- #
 
@@ -54,7 +55,7 @@ if plot_data:
 
 if _backtest:
 
-    df = pd.read_pickle(f"{_path}/{_asset}_full.pkl")
+    df = pd.read_pickle(f"{_path}/{assets[_asset_index]}_full.pkl")
 
     result_btc = backtest_spot_perp_basis(
         df=df,
@@ -62,5 +63,6 @@ if _backtest:
         leverage=leverage,
         annual_borrow_rate=annual_borrow_rate,
         fee_bps=trading_fees_bps,
-        asset_name=_asset
+        asset_name=assets[_asset_index],
+        earn_yield=earn_yield[_asset_index]
     )

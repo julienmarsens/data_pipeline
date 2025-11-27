@@ -10,6 +10,7 @@ def backtest_spot_perp_basis(
     leverage,
     annual_borrow_rate,
     fee_bps,
+    earn_yield,
     asset_name="ASSET",
     plot=True,
 ):
@@ -75,15 +76,22 @@ def backtest_spot_perp_basis(
     interest_cost_cum = interest_cost.cumsum()
 
     # ----------------------------------------------------------------------
+    # 4b) EARN YIELD (CONTINUOUS OVER TIME — OPPOSITE OF BORROW)
+    # ----------------------------------------------------------------------
+    earn_income = notional_usd * earn_yield * (dt_days / 365.0)
+    earn_income_cum = earn_income.cumsum()
+
+    # ----------------------------------------------------------------------
     # 5) EQUITY CURVE
     # ----------------------------------------------------------------------
     initial_equity = investment - trading_fees
 
     equity = (
-        initial_equity
-        + price_pnl
-        + funding_pnl_cum
-        - interest_cost_cum
+            initial_equity
+            + price_pnl
+            + funding_pnl_cum
+            - interest_cost_cum
+            + earn_income_cum  # <--- ADD THIS
     )
 
     # ----------------------------------------------------------------------
@@ -95,6 +103,7 @@ def backtest_spot_perp_basis(
     df["price_pnl"] = price_pnl
     df["funding_pnl_cum"] = funding_pnl_cum
     df["interest_cost_cum"] = interest_cost_cum
+    df["earn_income_cum"] = earn_income_cum
 
     # ----------------------------------------------------------------------
     # 7) PLOTS: 3 STACKED PANELS
