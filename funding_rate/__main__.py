@@ -20,11 +20,11 @@ earn_yield = [0.01, 0.05, 0.055, 0.01, 0.01]
 # backtest parameters
 
 investment = 100_000  # USD
-leverage = 5
+leverage = 4
 annual_borrow_rate = 0.035  # 3.5% per year
-_asset_index = 2
+_asset_index = 0
 trading_fees_bps = 10
-number_of_days = 500
+number_of_days = 800
 
 def days_to_hours_multiple_of_1000(days):
     hours = int(days * 24)
