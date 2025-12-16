@@ -1,10 +1,12 @@
-from .okx_data_download import OKXRestDataDownload
-from .okx_data_download import plot_all_assets_basis_and_funding
+from .binance_data_download import BinanceRestDataDownload
+from .binance_data_download import plot_all_assets_basis_and_funding
 from .backtesting_engine import backtest_spot_perp_basis
 
 import pandas as pd
 
 # ------------------------------------------- #
+
+# python3 -m funding_rate
 
 _path = "./funding_rate/local_data/merged"
 
@@ -22,11 +24,20 @@ leverage = 5
 annual_borrow_rate = 0.035  # 3.5% per year
 _asset_index = 2
 trading_fees_bps = 10
-number_of_hours = 4000
+number_of_days = 500
+
+def days_to_hours_multiple_of_1000(days):
+    hours = int(days * 24)
+    return ((hours + 999) // 1000) * 1000
+
+number_of_hours = days_to_hours_multiple_of_1000(number_of_days)
+
+print("number_of_hours: ",number_of_hours)
+
 
 # ------------------------------------------- #
 
-dl = OKXRestDataDownload()
+dl = BinanceRestDataDownload()
 all_data = {}
 
 if download_data:
@@ -66,3 +77,4 @@ if _backtest:
         asset_name=assets[_asset_index],
         earn_yield=earn_yield[_asset_index]
     )
+
