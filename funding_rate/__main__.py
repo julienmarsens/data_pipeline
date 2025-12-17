@@ -15,7 +15,7 @@ _path = "./funding_rate/local_data/merged"
 # ------ Action Flags ------ #
 
 download_data = False
-plot_data = False
+plot_data = True
 _backtest = True
 
 # -------------------------- #
@@ -28,7 +28,7 @@ earn_yield = [0.01, 0.015, 0.01, 0.01, 0.01]
 investment = 100_000  # USD
 leverage = 3
 annual_borrow_rate = 0.035  # 3.5% per year
-_asset_index = 0
+_asset_index = 4
 trading_fees_bps = 10
 number_of_days = 800
 
