@@ -36,7 +36,8 @@ def select_best_params(config_version,
                        csv_path: str,
                        min_r2: float,
                        min_num_trades: int,
-                       min_sharpe: float
+                       min_sharpe: float,
+                        number_of_config_per_pair: int
                         ):
     # Check if file exists and not empty
     if not os.path.exists(csv_path) or os.stat(csv_path).st_size == 0:
@@ -57,6 +58,7 @@ def select_best_params(config_version,
     print(f"   → Crossings OOS range: {df['num.crossing.oos'].min()} … {df['num.crossing.oos'].max()}")
     print(f"   → R² range: {df['r2'].min()} … {df['r2'].max()}")
 
+    print(df.head())
     # Keep profitable runs
     df = df[df["pnl.oos"] > 0]
     print(f"\n✔️ Profitability filter: kept {len(df)} rows")

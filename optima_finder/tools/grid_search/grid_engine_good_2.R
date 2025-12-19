@@ -28,7 +28,7 @@ config_path <- paste0(grid_config_path, "/", config_version, ".yaml")
 config_file <- yaml::read_yaml(config_path)
 
 MIN_SHARPE <- config_file$filtering$min_sharpe
-MIN_CROSSING_VEC <- config_file$filtering$min_crossing_per_day * as.integer(args[10])
+MIN_CROSSING <- config_file$filtering$min_crossing_per_day * as.integer(args[10])
 
 #  Choose from pairs list & export statement
 # plot
@@ -469,6 +469,36 @@ for(z in 1:length(product.names.lst)) {
     slope.regression     <- lm_b_a$coefficients[2]
     base.direction <- 1/slope.regression
 
+    # # Convert regression slope into absolute angle (deg and rad)
+    # slope_angle_rad <- atan(slope.regression)
+    # slope_angle_deg <- slope_angle_rad * 180/pi
+    #
+    # # Distance to nearest boundary (0 or 90 deg)
+    # dist_to_edge <- min(slope_angle_deg, 90 - slope_angle_deg)
+    #
+    # # Band = 100% of distance to edge, capped at 5°
+    # band_deg <- min(dist_to_edge, 5)
+    #
+    # # Step = band/2 so that 5 values cover ±band
+    # angles_deg <- slope_angle_deg + seq(-2, 2) * (band_deg/2)
+    #
+    # # Keep only angles strictly inside (0, 90)
+    # angles_deg <- angles_deg[angles_deg > 0 & angles_deg < 90]
+    #
+    # # Convert back to relative units for loop
+    # relative.signal.angle.range <- (angles_deg*pi/180 - pi/4) / (pi/4)
+    #
+    # # --- Verbose logging ---
+    # cat(file=stderr(), "\n[Calibration] --- Signal angle setup ---\n")
+    # cat(file=stderr(), "[Calibration] regression slope =", slope.regression, "\n")
+    # cat(file=stderr(), "[Calibration] slope_angle (deg) =", round(slope_angle_deg, 6), "\n")
+    # cat(file=stderr(), "[Calibration] adaptive band (deg) = ±", round(band_deg, 6), "\n")
+    # cat(file=stderr(), "[Calibration] testing absolute signal angles (deg) =",
+    #     paste(round(angles_deg, 6), collapse = ", "), "\n")
+    # cat(file=stderr(), "[Calibration] testing relative.signal.angle.range (raw) =",
+    #     paste(round(relative.signal.angle.range, 6), collapse = ", "), "\n")
+    # cat(file=stderr(), "[Calibration] ------------------------------\n\n")
+
       # # Convert regression slope into absolute angle (deg and rad)
     slope_angle_rad <- atan(slope.regression)
     slope_angle_deg <- slope_angle_rad * 180/pi
@@ -541,7 +571,19 @@ for(z in 1:length(product.names.lst)) {
 
     theo.price <- mean(signal.prices[1,])
 
-
+    # === run calibration to set relative.margin.range ===
+     relative.margin.range <- calibrate_margin_range(
+       prices = prices.bbo.a.b,
+       normalized.signal.vector = normalized.signal.vector,
+       margin.inv.vector = margin.inv.vector,
+       margin.inv.slope = margin.inv.slope,
+       tick.size.a = tick.size.a,
+       tick.size.b = tick.size.b,
+       fx.a = fx.a,
+       fx.b = fx.b,
+       min_crossings = MIN_CROSSING,
+       max_crossings = MIN_CROSSING*2
+     )
 
     # relative.margin.range    <- seq(from=10, to=100, by=10)
 
@@ -549,6 +591,10 @@ for(z in 1:length(product.names.lst)) {
 
     ###########  Display progress bar for each pair
 
+    # loop over all grid of parameters -> brut force calculation, keep track of run id
+    num.loops               <- length(relative.signal.angle.range) * length(relative.margin.range) * length(relative.step.back.range) *
+      length(relative.trading.angle.range) * length(relative.order.size.range) * length(num.crossing.2.limit.range)
+    iter.num                <- 1
     num.optima              <- 0
 
     ###########  max bid-ask filter -> not used as maker...
@@ -626,38 +672,6 @@ for(z in 1:length(product.names.lst)) {
     tickSize.b              <- min(tick.size.b*fx.b, minimum.spreads[2])
 
     ###########  Core algorithm
-
-  for (mc_idx in seq_along(MIN_CROSSING_VEC)) {
-
-      MIN_CROSSING <- MIN_CROSSING_VEC[mc_idx]
-
-      cat(file=stderr(),
-          paste0("\n[Grid] Using MIN_CROSSING = ", MIN_CROSSING,
-                 " (config index ", mc_idx, ")\n"))
-
-      # --- calibrate margin range for this config ---
-      relative.margin.range <- calibrate_margin_range(
-        prices = prices.bbo.a.b,
-        normalized.signal.vector = normalized.signal.vector,
-        margin.inv.vector = margin.inv.vector,
-        margin.inv.slope = margin.inv.slope,
-        tick.size.a = tick.size.a,
-        tick.size.b = tick.size.b,
-        fx.a = fx.a,
-        fx.b = fx.b,
-        min_crossings = MIN_CROSSING,
-        max_crossings = MIN_CROSSING * 2
-      )
-
-        # loop over all grid of parameters -> brut force calculation, keep track of run id
-num.loops <- length(relative.signal.angle.range) *
-             length(relative.margin.range) *
-             length(relative.step.back.range) *
-             length(relative.trading.angle.range) *
-             length(relative.order.size.range) *
-             length(num.crossing.2.limit.range)
-
-    iter.num                <- 1
 
     ###########  Compute signal angle
 
@@ -760,7 +774,7 @@ num.loops <- length(relative.signal.angle.range) *
                                      normalized.signal.vector[1], normalized.signal.vector[2],
                                      tick.size.a, tick.size.b)
 
-
+        }
           # check crossings and how long a quote would have become a trade
           # compute trade price on the maker and taker side
           quote.level        <- data.frame(price.2.use,
@@ -1171,8 +1185,7 @@ num.loops <- length(relative.signal.angle.range) *
                      sharpe.ratio,
                      tail(pnl.wo.mh.oos,1),
                      num.crossing_oos,
-                     r2,
-                     mc_idx    # <-- NEW FLAG
+                     r2   # <---- NEW
                    )
                 )
 
@@ -1261,35 +1274,29 @@ num.loops <- length(relative.signal.angle.range) *
               } # end n loop, i.e. num.crossing.2.limit.range
             } # end m loop, i.e. relative.order.size.range
           } # end l loop, i.e. relative.trading.angle.range
-
-          } # end k loop, i.e. relative.step.back.range
-        } # end j loop, i.e. relative.margin.range
-      } # end i loop, i.e. relative.signal.angle.range
-    } # end mc_idx loop (min_crossing_per_day variants)
-  } # end of z produc list
-
-
+        } # end k loop, i.e. relative.step.back.range
+      } # end j loop, i.e. relative.margin.range
+    } # end i loop, i.e. relative.signal.angle.range
 
     ###########################################################################################################
     ###########  Export utility surface file and close pdf stream writer
     ###########################################################################################################
     if(!is.null(grid.util.surface)) {
-      colnames(grid.util.surface) <- c(
-        "absolute.parameters",
-        "relative.signal.angle",
-        "relative.margin",
-        "relative.step.back",
-        "relative.trading.angle",
-        "relative.order.size",
-        "num.crossing.2.limit",
-        "sharpe.ratio",
-        "pnl",
-        "sharpe.ratio.oos",
-        "pnl.oos",
-        "num.crossing.oos",
-        "r2",
-        "min_crossing_cfg_id"
-      )
+    colnames(grid.util.surface) <- c(
+      "absolute.parameters",
+      "relative.signal.angle",
+      "relative.margin",
+      "relative.step.back",
+      "relative.trading.angle",
+      "relative.order.size",
+      "num.crossing.2.limit",
+      "sharpe.ratio",
+      "pnl",
+      "sharpe.ratio.oos",
+      "pnl.oos",
+      "num.crossing.oos",
+      "r2"   # <---- NEW
+    )
 
       to_export  <- paste(path.to.results, "/gs_", args[1], "_", args[2], "_", export.name.flag, ".csv", sep="")
       write.table(grid.util.surface, to_export, quote = FALSE, sep = ",", row.names = FALSE, append = FALSE)

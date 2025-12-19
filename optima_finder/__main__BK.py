@@ -12,7 +12,7 @@ from ruamel.yaml.comments import CommentedSeq
 
 from common.spread_binance_data_download import SpreadBinanceRestDataDownload
 from common.download_internal_market_data import get_internal_market_data
-from optima_finder.tools.results_analyser import select_best_params, plot_and_save_pnls
+from optima_finder.tools.results_analyser_new import select_best_params, plot_and_save_pnls
 from optima_finder.tools.sync_internal_market_data import sync_pairs
 import optima_finder.build_signal_angle_10 as signal_angle
 import prod_report_module.tools.google_sheet_connector as sheet_connector
