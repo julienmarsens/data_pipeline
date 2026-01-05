@@ -1,5 +1,5 @@
 # if true, all flags below are true
-from_scratch: true #True False
+from_scratch: false #True False
 ignore_prod: true
 
 pull_prod_pairs: false
@@ -9,10 +9,12 @@ download_internal_data: false
 
 find_best_pairs: false
 sync_internal_data: false
-run_grid_search: true
+run_grid_search: false
 best_parameter_analysis: true
 
-number_of_top_pairs: 25
+number_of_config_per_pair: 3
+
+number_of_top_pairs: 11
 number_of_days: 150 # 100
 split_date: 20251010 # set to None if no split date required, will do 50/50 split
 
@@ -26,8 +28,8 @@ selection_utility_function:
 
 assets: ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'DOTUSDT', 'DOGEUSDT', 'ADAUSDT', 'BCHUSDT', 'BNBUSDT', "LINKUSDT", "XLMUSDT", "UNIUSDT", "TRXUSDT", "AVAXUSDT", "SUIUSDT", "XRPUSDT", "LTCUSDT"]
 
-rolling_angle_windows_in_days: 20
-volatility_window_minutes: 240
+rolling_angle_windows_in_days: 40
+volatility_window_minutes: 480
 
 # --- auto-fill below, do not edit --- #
 

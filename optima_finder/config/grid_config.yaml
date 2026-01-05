@@ -3,7 +3,7 @@ assets:
 
 filtering:
   min_sharpe: 0.01
-  min_crossing_per_day: 3
+  min_crossing_per_day: [1,4]
   minimum_pnl_curve_r2: 0.1 # 0.9
 
 output:

@@ -203,15 +203,67 @@ def select_best_params(
         return None, False
 
     # --------------------------------------------------------
-    # Greedy diversified selection
+    # Greedy diversified selection (ensure >=1 per min_crossing_cfg_id if slots > 1)
     # --------------------------------------------------------
     selected = []
-    for idx in df_norm.index:
-        if idx not in pnl_series:
-            continue
 
-        if not selected:
-            selected.append(idx)
+    # Only candidates we can actually use (must have pnl series)
+    candidates = [idx for idx in df_norm.index if idx in pnl_series]
+
+    has_cfg_id = "min_crossing_cfg_id" in df_norm.columns
+
+    # ---- Step A: Seed one per min_crossing_cfg_id (only if you want >1 config and column exists)
+    if number_of_config_per_pair > 1 and has_cfg_id:
+        # Build group -> candidate indices (already sorted globally by score via df_norm)
+        group_to_idxs = {}
+        for idx in candidates:
+            gid = df_norm.at[idx, "min_crossing_cfg_id"]
+            group_to_idxs.setdefault(gid, []).append(idx)
+
+        # Order groups by their best candidate score (desc)
+        groups_ordered = sorted(
+            group_to_idxs.keys(),
+            key=lambda g: float(df_norm.at[group_to_idxs[g][0], "score"]),
+            reverse=True
+        )
+
+        # If there are more groups than slots, we can only include 1 from top groups
+        for gid in groups_ordered:
+            if len(selected) >= number_of_config_per_pair:
+                break
+
+            chosen = None
+
+            # Try to pick a candidate from this group that respects corr constraint
+            for idx in group_to_idxs[gid]:
+                if idx in selected:
+                    continue
+
+                ok = True
+                for sel in selected:
+                    s1 = pnl_series[idx]
+                    s2 = pnl_series[sel]
+                    corr = s1.corr(s2)  # keep your original corr logic
+                    if corr is not None and corr > max_pnl_corr:
+                        ok = False
+                        break
+
+                if ok:
+                    chosen = idx
+                    break
+
+            # If none in this group pass corr, force the best-scoring one anyway
+            # (this enforces your "at least 1 config of each" intent)
+            if chosen is None:
+                chosen = group_to_idxs[gid][0]
+
+            selected.append(chosen)
+
+    # ---- Step B: Fill remaining slots with your original greedy logic
+    for idx in df_norm.index:
+        if len(selected) >= number_of_config_per_pair:
+            break
+        if idx not in pnl_series or idx in selected:
             continue
 
         ok = True
@@ -226,14 +278,12 @@ def select_best_params(
         if ok:
             selected.append(idx)
 
-        if len(selected) >= number_of_config_per_pair:
-            break
-
     if not selected:
         return None, False
 
     best_rows = df.loc[selected].to_dict(orient="records")
     return best_rows, True
+
 
 
 # ============================================================

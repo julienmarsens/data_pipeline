@@ -57,15 +57,19 @@ def select_best_params(
     config_version: str,
     csv_path: str,
     min_r2: float,
-    min_num_trades: int,
     min_sharpe: float,
     number_of_config_per_pair: int,
-    max_pnl_corr: float = 0.7
+    max_pnl_corr: float = 0.7,
+    debug: bool = False,
 ):
     """
     Returns:
         best_rows: list[dict]
         success: bool
+
+    Notes:
+      - Removed any *minimum trade count / min_crossing_per_day* filtering.
+      - Still optionally uses `num.crossing.oos` in the scoring utility (if present in CSV + in weights).
     """
 
     if not os.path.exists(csv_path) or os.stat(csv_path).st_size == 0:
@@ -75,129 +79,52 @@ def select_best_params(
     if df.empty:
         return None, False
 
-    # =========================================================
-    # DEBUG: raw inputs + dataframe shape
-    # =========================================================
-    print("\n" + "=" * 120)
-    print("[select_best_params] csv_path:", csv_path)
-    print("[select_best_params] df.shape:", df.shape)
-    print("[select_best_params] raw inputs:")
-    for name, val in [
-        ("min_r2", min_r2),
-        ("min_num_trades", min_num_trades),
-        ("min_sharpe", min_sharpe),
-        ("number_of_config_per_pair", number_of_config_per_pair),
-        ("max_pnl_corr", max_pnl_corr),
-    ]:
-        t = type(val).__name__
-        try:
-            l = len(val)
-        except Exception:
-            l = None
-        try:
-            shp = np.asarray(val).shape
-        except Exception:
-            shp = None
-        print(f"  - {name}: type={t}, len={l}, np.shape={shp}, value_preview={str(val)[:200]}")
-
     def _ensure_scalar(x, name, cast=None):
-        # DEBUG: what comes in
-        print(
-            f"[ensure_scalar] {name} incoming: type={type(x).__name__}, "
-            f"len={len(x) if hasattr(x,'__len__') else None}, "
-            f"np.shape={(np.asarray(x).shape if not np.isscalar(x) else None)}"
-        )
-
-        # Accept Python scalars
         if np.isscalar(x):
-            out = cast(x) if cast else x
-            print(f"[ensure_scalar] {name} scalar -> {out} ({type(out).__name__})")
-            return out
-
-        # Accept 1-element containers (list/ndarray/Series/etc.)
+            return cast(x) if cast else x
         if isinstance(x, (list, tuple, np.ndarray, pd.Series, pd.Index)):
             arr = np.asarray(x)
-            print(f"[ensure_scalar] {name} arraylike size={arr.size}, shape={arr.shape}, dtype={arr.dtype}")
             if arr.size != 1:
-                preview = arr.ravel()[:10]
-                print(f"[ensure_scalar] {name} preview first10={preview}")
                 raise ValueError(
                     f"{name} must be a scalar (single value). Got {type(x).__name__} with size={arr.size}."
                 )
-            out = arr.item()
-            out = cast(out) if cast else out
-            print(f"[ensure_scalar] {name} 1-elem -> {out} ({type(out).__name__})")
-            return out
-
-        # Fall back (e.g., strings)
-        out = cast(x) if cast else x
-        print(f"[ensure_scalar] {name} fallback -> {out} ({type(out).__name__})")
-        return out
+            x = arr.item()
+            return cast(x) if cast else x
+        return cast(x) if cast else x
 
     min_r2 = _ensure_scalar(min_r2, "min_r2", float)
-    min_num_trades = _ensure_scalar(min_num_trades, "min_num_trades", int)
     min_sharpe = _ensure_scalar(min_sharpe, "min_sharpe", float)
     number_of_config_per_pair = _ensure_scalar(number_of_config_per_pair, "number_of_config_per_pair", int)
+    max_pnl_corr = _ensure_scalar(max_pnl_corr, "max_pnl_corr", float)
 
-    # =========================================================
-    # DEBUG: dataframe columns needed for filtering
-    # =========================================================
-    needed = ["pnl.oos", "r2", "num.crossing.oos", "sharpe.ratio.oos"]
-    missing = [c for c in needed if c not in df.columns]
+    if debug:
+        print("\n" + "=" * 120)
+        print("[select_best_params] csv_path:", csv_path)
+        print("[select_best_params] df.shape:", df.shape)
+        print("[select_best_params] inputs:",
+              {"min_r2": min_r2, "min_sharpe": min_sharpe,
+               "number_of_config_per_pair": number_of_config_per_pair,
+               "max_pnl_corr": max_pnl_corr})
+
+    # --------------------------------------------------------
+    # Hard filters (NO min trade count filter anymore)
+    # --------------------------------------------------------
+    required_for_filters = ["pnl.oos", "r2", "sharpe.ratio.oos"]
+    missing = [c for c in required_for_filters if c not in df.columns]
     if missing:
-        print("[select_best_params] MISSING columns:", missing)
-        print("[select_best_params] available columns (first 30):", list(df.columns)[:30])
+        if debug:
+            print("[select_best_params] MISSING columns:", missing)
+            print("[select_best_params] available columns (first 30):", list(df.columns)[:30])
         return None, False
 
-    print("[select_best_params] filter columns dtypes/stats:")
-    for c in needed:
-        s = pd.to_numeric(df[c], errors="coerce")
-        print(
-            f"  - {c}: dtype={df[c].dtype}, nan_count={df[c].isna().sum()}, "
-            f"num_nan_after_coerce={s.isna().sum()}, min={s.min()}, max={s.max()}"
-        )
-
-    for c in needed:
-        if df[c].dtype == "object":
-            print(f"[select_best_params] WARNING: column {c} is object. sample values:",
-                  df[c].dropna().astype(str).head(5).tolist())
-
-    # =========================================================
-    # DEBUG: show what the comparisons will do (shapes)
-    # =========================================================
-    print("[select_best_params] comparison operands:")
-    print("  - df['num.crossing.oos']:", type(df["num.crossing.oos"]).__name__,
-          "shape=", df["num.crossing.oos"].shape, "dtype=", df["num.crossing.oos"].dtype)
-    print("  - min_num_trades:", type(min_num_trades).__name__, "value=", min_num_trades)
-    print("  - df['r2']:", type(df["r2"]).__name__,
-          "shape=", df["r2"].shape, "dtype=", df["r2"].dtype)
-    print("  - min_r2:", type(min_r2).__name__, "value=", min_r2)
-    print("  - df['sharpe.ratio.oos']:", type(df["sharpe.ratio.oos"]).__name__,
-          "shape=", df["sharpe.ratio.oos"].shape, "dtype=", df["sharpe.ratio.oos"].dtype)
-    print("  - min_sharpe:", type(min_sharpe).__name__, "value=", min_sharpe)
-
-    # --------------------------------------------------------
-    # Hard filters
-    # --------------------------------------------------------
     pre = len(df)
     df = df[df["pnl.oos"] > 0]
-    print(f"[select_best_params] after pnl.oos>0: {pre} -> {len(df)}")
+    df = df[(df["r2"] >= min_r2) & (df["sharpe.ratio.oos"] >= min_sharpe)]
 
-    # Build masks separately to pinpoint failure
-    m1 = df["r2"] >= min_r2
-    print("[select_best_params] mask r2>=min_r2: true_count=", int(m1.sum()), "len=", len(m1))
-
-    m2 = df["num.crossing.oos"] >= min_num_trades
-    print("[select_best_params] mask num.crossing.oos>=min_num_trades: true_count=", int(m2.sum()), "len=", len(m2))
-
-    m3 = df["sharpe.ratio.oos"] >= min_sharpe
-    print("[select_best_params] mask sharpe.ratio.oos>=min_sharpe: true_count=", int(m3.sum()), "len=", len(m3))
-
-    df = df[m1 & m2 & m3]
-    print("[select_best_params] after all filters:", df.shape)
+    if debug:
+        print(f"[select_best_params] after filters: {pre} -> {len(df)}")
 
     if df.empty:
-        print("[select_best_params] EMPTY after filters.")
         return None, False
 
     # --------------------------------------------------------
@@ -206,30 +133,30 @@ def select_best_params(
     scaler = MinMaxScaler()
     df_norm = df.copy()
 
-    metrics = [
-        "sharpe.ratio",
-        "sharpe.ratio.oos",
-        "pnl",
-        "pnl.oos",
-        "r2",
-    ]
-
-    # If any metric is non-numeric, coerce explicitly (useful debug)
+    # Metrics always used in score
+    metrics = ["sharpe.ratio", "sharpe.ratio.oos", "pnl", "pnl.oos", "r2"]
     for c in metrics:
+        if c not in df_norm.columns:
+            if debug:
+                print(f"[select_best_params] missing metric column: {c}")
+            return None, False
         if df_norm[c].dtype == "object":
-            print(f"[select_best_params] WARNING: metric {c} is object; coercing to numeric.")
             df_norm[c] = pd.to_numeric(df_norm[c], errors="coerce")
 
     df_norm[metrics] = scaler.fit_transform(df_norm[metrics])
 
-    df_norm["num.crossing.oos"] = pd.to_numeric(df["num.crossing.oos"], errors="coerce").clip(upper=1000)
-    df_norm["num.crossing.oos"] = scaler.fit_transform(df_norm[["num.crossing.oos"]])
+    # Optional: include num.crossing.oos in score if present (NOT a filter)
+    has_crossing = "num.crossing.oos" in df_norm.columns
+    if has_crossing:
+        df_norm["num.crossing.oos"] = pd.to_numeric(df["num.crossing.oos"], errors="coerce").clip(upper=1000)
+        df_norm["num.crossing.oos"] = MinMaxScaler().fit_transform(df_norm[["num.crossing.oos"]])
 
+    # Sharpe drop penalty term
     df_norm["sharpe_drop"] = (
         pd.to_numeric(df["sharpe.ratio"], errors="coerce")
         - pd.to_numeric(df["sharpe.ratio.oos"], errors="coerce")
     ).abs()
-    df_norm["sharpe_drop"] = scaler.fit_transform(df_norm[["sharpe_drop"]])
+    df_norm["sharpe_drop"] = MinMaxScaler().fit_transform(df_norm[["sharpe_drop"]])
 
     # --------------------------------------------------------
     # Load weights
@@ -240,10 +167,15 @@ def select_best_params(
 
     w = cfg["selection_utility_function"]
 
+    # If config includes the crossing term but CSV doesn't, treat it as 0 contribution
+    crossing_term = 0.0
+    if "num_crossing_out_of_sample" in w and has_crossing:
+        crossing_term = w["num_crossing_out_of_sample"] * df_norm["num.crossing.oos"]
+
     df_norm["score"] = (
         w["sharpe_ratio_out_of_sample"] * df_norm["sharpe.ratio.oos"]
         + w["sharpe_ratio_in_sample"] * df_norm["sharpe.ratio"]
-        + w["num_crossing_out_of_sample"] * df_norm["num.crossing.oos"]
+        + crossing_term
         + w["r2_out_of_sample"] * df_norm["r2"]
         + w["pnl_out_of_sample"] * df_norm["pnl.oos"]
         - w["sharpe_drop_out_sample_to_in_sample"] * df_norm["sharpe_drop"]
@@ -256,23 +188,16 @@ def select_best_params(
     # --------------------------------------------------------
     pnl_file = csv_path.replace("gs_", "pnl_")
     if not os.path.exists(pnl_file):
-        print("[select_best_params] missing pnl_file:", pnl_file)
         return None, False
 
     pnl_df = load_pnl_csv(pnl_file)
-    print("[select_best_params] pnl_df.shape:", pnl_df.shape)
 
     pnl_series = {}
-    missing_cols = 0
     for idx, row in df.iterrows():
         sig = row["absolute.parameters"]
         col = find_matching_column(sig, pnl_df.columns)
         if col is not None:
             pnl_series[idx] = pnl_df[col].dropna()
-        else:
-            missing_cols += 1
-
-    print("[select_best_params] pnl_series count:", len(pnl_series), "missing cols:", missing_cols)
 
     if not pnl_series:
         return None, False
@@ -281,7 +206,6 @@ def select_best_params(
     # Greedy diversified selection
     # --------------------------------------------------------
     selected = []
-
     for idx in df_norm.index:
         if idx not in pnl_series:
             continue
@@ -295,7 +219,6 @@ def select_best_params(
             s1 = pnl_series[idx]
             s2 = pnl_series[sel]
             corr = s1.corr(s2)
-
             if corr is not None and corr > max_pnl_corr:
                 ok = False
                 break
@@ -306,14 +229,11 @@ def select_best_params(
         if len(selected) >= number_of_config_per_pair:
             break
 
-    print("[select_best_params] selected count:", len(selected), "selected idxs:", selected[:10])
-
     if not selected:
         return None, False
 
     best_rows = df.loc[selected].to_dict(orient="records")
     return best_rows, True
-
 
 
 # ============================================================

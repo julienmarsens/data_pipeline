@@ -13,7 +13,7 @@ from ruamel.yaml.comments import CommentedSeq
 
 from common.spread_binance_data_download import SpreadBinanceRestDataDownload
 from common.download_internal_market_data import get_internal_market_data
-from optima_finder.tools.results_analyser import select_best_params, plot_and_save_pnls
+from optima_finder.tools.results_analyser_new import select_best_params, plot_and_save_pnls
 from optima_finder.tools.sync_internal_market_data import sync_pairs
 import optima_finder.build_signal_angle_10 as signal_angle
 import prod_report_module.tools.google_sheet_connector as sheet_connector
@@ -65,6 +65,7 @@ class OptimaFinderPipeline():
 			run_grid_search = optima_finder_config["run_grid_search"]
 			best_parameter_analysis = optima_finder_config["best_parameter_analysis"]
 
+		number_of_config_per_pair = optima_finder_config["number_of_config_per_pair"]
 		number_of_top_pairs = optima_finder_config["number_of_top_pairs"]
 		number_of_days = optima_finder_config["number_of_days"]
 		split_date = optima_finder_config["split_date"]
@@ -125,7 +126,7 @@ class OptimaFinderPipeline():
 
 			fmt = "%Y_%m_%d"
 
-			if split_date is None:
+			if split_date == "None":
 				# Split evenly in half
 				in_sample_len = n_days // 2
 				out_sample_len = n_days - in_sample_len
@@ -294,7 +295,7 @@ class OptimaFinderPipeline():
 				for pair in pairs_to_grid
 			]
 
-			max_workers = min(6, len(tasks))  # Adjust for available cores / R load
+			max_workers = min(3, len(tasks))  # Adjust for available cores / R load
 			with ProcessPoolExecutor(max_workers=max_workers) as executor:
 				futures = {executor.submit(run_grid_search_for_pair, args): args[0] for args in tasks}
 				for i, future in enumerate(as_completed(futures), 1):
@@ -314,6 +315,7 @@ class OptimaFinderPipeline():
 				if not subdirs:
 					return None
 				latest = max(subdirs, key=os.path.getctime)
+				# latest = "/Volumes/disk_ext/results/2025_11_27__15_07"
 				return str(latest)
 
 			def get_gs_files(folder: str):
@@ -337,25 +339,36 @@ class OptimaFinderPipeline():
 			parameters = []
 
 			for f in files:
+
 				best, flag = select_best_params(
 					config_version= config_version,
 					csv_path=os.path.join(target_result_path, f),
 					min_r2=grid_config["filtering"]["minimum_pnl_curve_r2"],
-					min_num_trades=out_sample_len * grid_config["filtering"]["min_crossing_per_day"],
 					min_sharpe=grid_config["filtering"]["min_sharpe"],
+					number_of_config_per_pair=number_of_config_per_pair
 				)
 
 				if flag and best:
-					# Valid result → extract parameters
-					signatures.append(best["absolute.parameters"])
-					parameters.append(
-						f"{best['relative.signal.angle']}#{best['relative.margin']}#{best['relative.step.back']}#"
-						f"{best['relative.trading.angle']}#{best['relative.order.size']}#{best['num.crossing.2.limit']}"
-					)
+					sigs = []
+					params = []
+
+					for row in best:
+						sigs.append(row["absolute.parameters"])
+						params.append(
+							f"{row['relative.signal.angle']}#"
+							f"{row['relative.margin']}#"
+							f"{row['relative.step.back']}#"
+							f"{row['relative.trading.angle']}#"
+							f"{row['relative.order.size']}#"
+							f"{row['num.crossing.2.limit']}"
+						)
+
+					signatures.append(sigs)
+					parameters.append(params)
+
 				else:
-					# No valid result → keep placeholder
-					signatures.append("null")
-					parameters.append("null")
+					signatures.append(["null"])
+					parameters.append(["null"])
 
 			# --- write to YAML ---
 			yaml.default_flow_style = True  # force inline list format
