@@ -7,6 +7,7 @@ json_path = "./deployment/temporary/optimization_results.json"
 yml_path = "./deployment/config/config_to_deploy.yml"
 # ------------------------
 
+
 def run():
     yaml = YAML(typ="rt")   # round-trip to preserve formatting and comments
     yaml.preserve_quotes = True
@@ -19,17 +20,58 @@ def run():
     optimization_weights = data["optimization_weights"]
 
     # Sort absolute_parameters by pair_1, pair_2, ...
-    pair_keys = sorted(data["absolute_parameters"].keys(),
-                       key=lambda x: int(x.split("_")[1]))
+    pair_keys = sorted(
+        data["absolute_parameters"].keys(),
+        key=lambda x: int(x.split("_")[1])
+    )
 
     abs_params = [data["absolute_parameters"][k] for k in pair_keys]
 
-    # Extract max_inventory and stop_loss in the same order as absolute_parameters
+    # -----------------------------
+    # NEW: max_stats is now {pair_key: [ {pair_instance: "pair_1", ...}, ... ], ...}
+    # Build a lookup by pair_instance so we can align with pair_keys
+    # -----------------------------
+    stats_by_pair_instance = {}
+
+    max_stats = data.get("max_stats", {})
+    for pair_key, entries in max_stats.items():
+        if not isinstance(entries, list):
+            raise ValueError(
+                f"Expected max_stats['{pair_key}'] to be a list, got {type(entries)}"
+            )
+
+        for entry in entries:
+            if not isinstance(entry, dict):
+                raise ValueError(
+                    f"Expected an entry dict under max_stats['{pair_key}'], got {type(entry)}"
+                )
+
+            pi = entry.get("pair_instance")
+            if not pi:
+                raise ValueError(f"Missing 'pair_instance' in max_stats['{pair_key}'] entry: {entry}")
+
+            if pi in stats_by_pair_instance:
+                raise ValueError(
+                    f"Duplicate stats for '{pi}' found in max_stats. "
+                    f"Already had one, found another under '{pair_key}'."
+                )
+
+            stats_by_pair_instance[pi] = entry
+
+    # Extract max_inventory and stop_loss in the same order as absolute_parameters (pair_1..pair_n)
     max_inventory = []
     stop_losses = []
-    for v in data["max_stats"].values():
-        max_inventory.append(v["max_inventory"])
-        stop_losses.append(v["stop_loss"])
+
+    for pk in pair_keys:
+        entry = stats_by_pair_instance.get(pk)
+        if entry is None:
+            raise ValueError(
+                f"Missing max_stats entry for '{pk}'. "
+                f"Have: {sorted(stats_by_pair_instance.keys())}"
+            )
+
+        max_inventory.append(entry["max_inventory"])
+        stop_losses.append(entry["stop_loss"])
 
     # Load YAML file
     with open(yml_path, "r") as f:
@@ -57,3 +99,7 @@ def run():
     # Write YAML back (preserve format + comments)
     with open(yml_path, "w") as f:
         yaml.dump(yml_data, f)
+
+
+if __name__ == "__main__":
+    run()

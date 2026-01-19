@@ -3,20 +3,21 @@ from oauth2client.service_account import ServiceAccountCredentials
 from ruamel.yaml import YAML
 import re
 import datetime
+from collections import defaultdict
 
 # ---- SETUP ----
 yaml = YAML(typ="rt")  # round-trip
 yaml.preserve_quotes = True
 yaml.width = 10 ** 6
 
-with open(f'./common/config/local_path.yml', 'r') as f:
+with open("./common/config/local_path.yml", "r") as f:
     local_path_config = yaml.load(f)
 
 local_google_sheet_credentials_file_path = local_path_config["paths"]["google_api_credentials"]
 
 scope = [
     "https://www.googleapis.com/auth/spreadsheets",
-    "https://www.googleapis.com/auth/drive"
+    "https://www.googleapis.com/auth/drive",
 ]
 
 creds = ServiceAccountCredentials.from_json_keyfile_name(local_google_sheet_credentials_file_path, scope)
@@ -33,16 +34,16 @@ def extract_trader_number(trader_str):
     match = re.search(r"trader_(\d+)", str(trader_str))
     return int(match.group(1)) if match else None
 
+
 def update_last_naming():
     """
     Iterate target kernels, pull highest TraderID from sheet,
     update mapping.yml accordingly.
     """
-
-    with open('./deployment/config/config_to_deploy.yml', 'r') as f:
+    with open("./deployment/config/config_to_deploy.yml", "r") as f:
         config_to_deploy_config = yaml.load(f)
 
-    with open('./deployment/config/mapping.yml', 'r') as f:
+    with open("./deployment/config/mapping.yml", "r") as f:
         config_mapping = yaml.load(f)
 
     for kernel in config_to_deploy_config["target_kernel"]:
@@ -51,18 +52,19 @@ def update_last_naming():
             print(f"Updating {kernel} last_naming → {trader_str}")
             config_mapping[kernel]["last_naming"] = trader_str
 
-    with open('./deployment/config/mapping.yml', 'w') as f:
+    with open("./deployment/config/mapping.yml", "w") as f:
         yaml.dump(config_mapping, f)
+
 
 def pull_highest_trader_id(kernel_name):
     """
     Look at 'Production' tab rows where Column C == kernel_name,
     return trader string with highest numeric suffix from Column B.
     """
-    production_ws = prod_spreadsheet.worksheet("Production")  # <---- connect to Production tab
+    production_ws = prod_spreadsheet.worksheet("Production")
 
     all_trader_ids = production_ws.col_values(2)  # Column B = TraderID
-    all_kernels = production_ws.col_values(3)     # Column C = Kernel
+    all_kernels = production_ws.col_values(3)  # Column C = Kernel
 
     trader_ids = []
     for trader, kernel in zip(all_trader_ids[1:], all_kernels[1:]):  # skip headers
@@ -77,9 +79,11 @@ def pull_highest_trader_id(kernel_name):
     max_trader, _ = max(trader_ids, key=lambda x: x[1])
     return max_trader
 
+
 def format_pair(pair):
     """Convert [DOGEUSDT, AVAXUSDT] -> DOGE-AVAX"""
     return f"{pair[0].replace('USDT','')}-{pair[1].replace('USDT','')}"
+
 
 def update_relative_or_absolute(template_str, trade_size):
     """
@@ -87,37 +91,52 @@ def update_relative_or_absolute(template_str, trade_size):
     Example: "a#b#c#d#1000#5" -> "a#b#c#d#<trade_size>#5"
     """
     parts = template_str.split("#")
-    parts[-2] = str(int(trade_size))  # replace before last with int trade_size
+    parts[-2] = str(int(trade_size))
     return "#".join(parts)
 
-def create_new_deployment_tab():
-    # 1. copy template tab
 
-    with open('./deployment/config/config_to_deploy.yml', 'r') as f:
+def create_new_deployment_tab():
+    with open("./deployment/config/config_to_deploy.yml", "r") as f:
         config_to_deploy_config = yaml.load(f)
 
-    with open('./deployment/config/mapping.yml', 'r') as f:
+    with open("./deployment/config/mapping.yml", "r") as f:
         config_mapping = yaml.load(f)
 
     now = datetime.datetime.now()
     tab_name = f"new_deployment {now.month}_{now.day}_{now.hour}_{now.minute}"
 
+    # delete tab if exists
     try:
-        spreadsheet.worksheet(tab_name)
-        spreadsheet.del_worksheet(spreadsheet.worksheet(tab_name))
+        ws_existing = spreadsheet.worksheet(tab_name)
+        spreadsheet.del_worksheet(ws_existing)
     except gspread.WorksheetNotFound:
         pass
 
+    # create fresh tab from template
     template_ws = spreadsheet.worksheet("deployment_template")
     new_ws = template_ws.duplicate(new_sheet_name=tab_name)
-    new_ws.clear()  # keep headers clean if template had data
-    new_ws.append_row([
-        "deployment date", "TraderID", "Kernel", "public_key", "private_key",
-        "pass phrase", "Exchange", "Pair", "relative parameters",
-        "absolute parameters", "stop loss", "scaling optimization",
-        "overall scaling", "fitting_date_start", "fitting_date_end",
-        "launch_timestamp", "Action"
-    ])
+    new_ws.clear()
+    new_ws.append_row(
+        [
+            "deployment date",
+            "TraderID",
+            "Kernel",
+            "public_key",
+            "private_key",
+            "pass phrase",
+            "Exchange",
+            "Pair",
+            "relative parameters",
+            "absolute parameters",
+            "stop loss",
+            "scaling optimization",
+            "overall scaling",
+            "fitting_date_start",
+            "fitting_date_end",
+            "launch_timestamp",
+            "Action",
+        ]
+    )
 
     today_str = datetime.datetime.today().strftime("%d.%m.%Y")
 
@@ -126,25 +145,41 @@ def create_new_deployment_tab():
     signatures = config_to_deploy_config["signature"]
     model_fitting_dates = config_to_deploy_config["model_fitting_dates"]
 
+    # ---- FIX: support repeated pairs with different configs ----
+    # build: (pair tuple) -> [indices...]
+    pair_to_indices = defaultdict(list)
+    for i, p in enumerate(pairs):
+        pair_to_indices[tuple(p)].append(i)
+
+    # account_1 uses version 0, account_2 uses version 1, account_3 uses version 2 (mod if fewer)
+    account_keys = ["account_1", "account_2", "account_3"]
+
     for kernel in config_to_deploy_config["target_kernel"]:
         kernel_data = config_mapping[kernel]
-        last_trader_str = kernel_data["last_naming"]
+        last_trader_str = kernel_data.get("last_naming", "")
         last_num = extract_trader_number(last_trader_str) or 0
         trader_counter = last_num + 1
 
-        for acc_key in ["account_1", "account_2", "account_3"]:
+        for acc_idx, acc_key in enumerate(account_keys):
             acc = kernel_data.get(acc_key, {})
+
             for pair, trade_size_list, stop_loss_list in zip(
                 acc.get("pairs", []),
                 acc.get("trade_size", []),
-                acc.get("backtest_stop_loss", [])  # <-- NEW: pull stop loss values
+                acc.get("backtest_stop_loss", []),
             ):
-                # each pair line
-                pair_index = pairs.index(pair)  # find index in config_to_deploy
+                key = tuple(pair)
+                idx_list = pair_to_indices.get(key, [])
+                if not idx_list:
+                    raise ValueError(f"Pair {pair} not found in config_to_deploy['pairs'].")
+
+                # choose which repeated-config entry to use for this account
+                pair_index = idx_list[acc_idx % len(idx_list)]
+
                 rel_param = update_relative_or_absolute(params[pair_index], trade_size_list[0])
                 abs_param = update_relative_or_absolute(signatures[pair_index], trade_size_list[0])
-                stop_loss_val = stop_loss_list[0] if stop_loss_list else ""  # <-- NEW: stop loss for this pair
 
+                stop_loss_val = stop_loss_list[0] if stop_loss_list else ""
                 fit_start, fit_end = model_fitting_dates[pair_index]
 
                 row = [
@@ -158,11 +193,13 @@ def create_new_deployment_tab():
                     format_pair(pair),
                     rel_param,
                     abs_param,
-                    stop_loss_val,  # <-- NEW: update stop loss column
-                    "", "",  # scaling opt, overall scaling
+                    stop_loss_val,
+                    "",  # scaling optimization
+                    "",  # overall scaling
                     fit_start,
                     fit_end,
-                    "", ""  # launch_timestamp, Action
+                    "",  # launch_timestamp
+                    "",  # Action
                 ]
                 new_ws.append_row(row)
                 trader_counter += 1

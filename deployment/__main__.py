@@ -100,7 +100,6 @@ class DeploymentPipeline():
 				formatted.append(f'  c("{a_r}", "{b_r}")')
 			return "list(\n" + ",\n".join(formatted) + "\n)"
 
-
 		r_pairs_str = to_r_product_pairs(_pairs)
 
 		@staticmethod
@@ -109,6 +108,8 @@ class DeploymentPipeline():
 			return date_str.replace("_", "")
 
 		r_script = "./deployment/tools/optimization/optimizer.R"
+
+		print("r_pairs_str: ",r_pairs_str)
 
 		argv = [
 			"Rscript",
@@ -157,6 +158,8 @@ class DeploymentPipeline():
 		google_sheet_connector.update_last_naming()
 
 	if trade_size_and_account_split:
+
+		config_pusher.run()
 
 		trade_size_and_account_split_obj = TradeSizeAccount()
 		trade_size_and_account_split_obj.run()

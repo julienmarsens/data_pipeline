@@ -900,11 +900,21 @@ for(z in 1:length(product.names.lst)) {
 
                 pair_key <- paste0("[", clean_name(product.names[1]), ", ", clean_name(product.names[2]), "]")
 
-                stats.list[[pair_key]] <- list(
-                  max_drawdown = max.dd,
-                  stop_loss = as.numeric(args[9]) * tail(pnl.wo.mh.oos, 1),
+                # ✅ save stats now with valid values (Option 1: append, do not overwrite)
+
+                # Ensure key exists and is a list (so it becomes a JSON array)
+                if (is.null(stats.list[[pair_key]])) {
+                  stats.list[[pair_key]] <- list()
+                }
+
+                # Append one entry for this run/config
+                stats.list[[pair_key]][[length(stats.list[[pair_key]]) + 1]] <- list(
+                  pair_instance = export.name.flag[z],  # "pair_1", "pair_2", ...
+                  parameters    = titl,                # the absolute parameter string for this run
+                  max_drawdown  = max.dd,
+                  stop_loss     = as.numeric(args[9]) * tail(pnl.wo.mh.oos, 1),
                   max_inventory = c(max.inv.a, max.inv.b),
-                  max_possible_inventory = theoretical.max.inv   # <-- NEW LINE
+                  max_possible_inventory = theoretical.max.inv
                 )
 
                 cat(file=stderr(), paste("[",Sys.time(),"]",
