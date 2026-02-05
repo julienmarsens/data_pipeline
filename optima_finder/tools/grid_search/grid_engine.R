@@ -30,6 +30,9 @@ config_file <- yaml::read_yaml(config_path)
 MIN_SHARPE <- config_file$filtering$min_sharpe
 MIN_CROSSING_VEC <- config_file$filtering$min_crossing_per_day * as.integer(args[10])
 
+# Skew configuration
+ENABLE_SKEW <- config_file$skew$enable_skew
+
 #  Choose from pairs list & export statement
 # plot
 export2pdf <- config_file$output$export_to_pdf
@@ -163,7 +166,8 @@ calibrate_margin_range <- function(prices,
                                  margin.inv.vector[1], margin.inv.vector[2],
                                  margin.inv.slope,
                                  normalized.signal.vector[1], normalized.signal.vector[2],
-                                 tick.size.a, tick.size.b)
+                                 tick.size.a, tick.size.b,
+                                 enableSkew = FALSE)
 
       score <- sum(dPrice$moveTheoPriceVec != 0)
 
@@ -200,7 +204,8 @@ calibrate_margin_range <- function(prices,
                                  margin.inv.vector[1], margin.inv.vector[2],
                                  margin.inv.slope,
                                  normalized.signal.vector[1], normalized.signal.vector[2],
-                                 tick.size.a, tick.size.b)
+                                 tick.size.a, tick.size.b,
+                                 enableSkew = FALSE)
       return(sum(dPrice$moveTheoPriceVec != 0))
     })
 
@@ -758,7 +763,8 @@ num.loops <- length(relative.signal.angle.range) *
                                      margin.inv.vector[1], margin.inv.vector[2],
                                      margin.inv.slope,
                                      normalized.signal.vector[1], normalized.signal.vector[2],
-                                     tick.size.a, tick.size.b)
+                                     tick.size.a, tick.size.b,
+                                     enableSkew = ENABLE_SKEW)
 
 
           # check crossings and how long a quote would have become a trade
@@ -1116,7 +1122,8 @@ num.loops <- length(relative.signal.angle.range) *
                                                  type.b,
                                                  is.daily.hedged,
                                                  idx.oos.eod,
-                                                 daily.date)
+                                                 daily.date,
+                                                 enable.skew = ENABLE_SKEW)
 
                 # legacy
                 pnl.wo.mh.oos <- pnl.wo.mh.oos.lst$pnl.wo.mh

@@ -1,11 +1,11 @@
 ###########################################################################################################
 ###########  OOS - Run -> pass absolute parameters
 ###########################################################################################################
-run.oos.sim <- function(prices.bbo.a.b.oos, 
-                               normalized.signal.vector, 
-                               margin, 
+run.oos.sim <- function(prices.bbo.a.b.oos,
+                               normalized.signal.vector,
+                               margin,
                                stepback,
-                               tick.size.a, 
+                               tick.size.a,
                                tick.size.b,
                                normalized.trading.vector,
                                base.order.size.a,
@@ -25,7 +25,8 @@ run.oos.sim <- function(prices.bbo.a.b.oos,
                                # path2util,
                                is.daily.hedged,
                                idx.oos.eod,
-                               daily.date) {
+                               daily.date,
+                               enable.skew = FALSE) {
 
   ###########################################################################################################
   ###########  dbg
@@ -143,7 +144,8 @@ run.oos.sim <- function(prices.bbo.a.b.oos,
                                     margin.inv.vector[1], margin.inv.vector[2],
                                     margin.inv.slope,
                                     normalized.signal.vector[1], normalized.signal.vector[2],
-                                    tick.size.a, tick.size.b)
+                                    tick.size.a, tick.size.b,
+                                    enableSkew = enable.skew)
   
   # check crossings and how long a quote would have become a trade
   # compute trade price on the maker and taker side

@@ -9,6 +9,9 @@ filtering:
 output:
   export_to_pdf: TRUE
 
+skew:
+  enable_skew: FALSE  # Set to TRUE to enable dynamic skew mechanism
+
 grid:
   signal_angle_percent_range: 0.10
 

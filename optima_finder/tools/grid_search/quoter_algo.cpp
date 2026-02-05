@@ -12,10 +12,17 @@ List generateCrossing(NumericVector aBidSignal, NumericVector anAskSignal,
                       double theMarginInvA, double theMarginInvB,
                       double theMarginInvSlope,
                       double theNormSigA, double theNormSigB,
-                      double theOrderLevelIncrementA, double theOrderLevelIncrementB) {
-  
+                      double theOrderLevelIncrementA, double theOrderLevelIncrementB,
+                      bool enableSkew = false) {
+
   int n = aBidSignal.size();
   float thePrecision_Prices = 1.e-5;
+
+  // Skew mechanism variables
+  double skewUpperBound = 1.0;
+  double skewLowerBound = 1.0;
+  int nbTickSinceUpCrossing = 0;
+  int nbTickSinceDownCrossing = 0;
   
   double marginLowerX = 0.0;
   double marginLowerY = 0.0;
@@ -37,29 +44,79 @@ List generateCrossing(NumericVector aBidSignal, NumericVector anAskSignal,
   
   // check for crossings, loop through all prices
   for(int i = 0; i < n; ++i) {
-    
+
+    // Increment tick counters for skew mechanism
+    if (enableSkew) {
+      nbTickSinceUpCrossing++;
+      nbTickSinceDownCrossing++;
+    }
+
     theoPriceVec[i] = theTheorPrice; // debug
-    if(((aBidSignal[i]-theTheorPrice)/theMargin)>(1-thePrecision_Prices)) {
-      
+
+    // Apply skew multipliers to margins
+    double effectiveMarginUpper = theMargin * skewUpperBound;
+    double effectiveMarginLower = theMargin * skewLowerBound;
+
+    // UPWARD crossing detection (using skewed upper margin)
+    if(((aBidSignal[i]-theTheorPrice)/effectiveMarginUpper)>(1-thePrecision_Prices)) {
+
       //Rprintf("#######################################################################################################\n");
       //Rprintf("[%i] Will insert UPWARD crossing now! TheoPrice: %f, bid signal: %f, margin: %f\n",
-      //        i, theTheorPrice, aBidSignal[i], theMargin);
+      //        i, theTheorPrice, aBidSignal[i], effectiveMarginUpper);
 
-      moveTheoPriceVec[i] = ceil((aBidSignal[i]-theTheorPrice-theMargin+thePrecision_Prices*theMargin)/theStepback)*theStepback;
+      moveTheoPriceVec[i] = ceil((aBidSignal[i]-theTheorPrice-effectiveMarginUpper+thePrecision_Prices*effectiveMarginUpper)/theStepback)*theStepback;
       theTheorPrice = theTheorPrice + moveTheoPriceVec[i];
-      
+
+      // Update skew bounds after upward crossing
+      if (enableSkew) {
+        if (nbTickSinceUpCrossing <= 90) {
+          skewUpperBound = 2.0;
+        }
+        if (nbTickSinceUpCrossing <= 60) {
+          skewUpperBound = 3.0;
+        }
+        if (nbTickSinceUpCrossing <= 30) {
+          skewUpperBound = 4.0;
+        }
+
+        // Counter-balance: reduce opposite side skew
+        skewLowerBound = std::max(1.0, skewLowerBound - 1.0);
+
+        // Reset counter after crossing
+        nbTickSinceUpCrossing = 0;
+      }
+
       //Rprintf("[%i] moveTheoPriceVec=%f\n", i, moveTheoPriceVec[i]);
       //Rprintf("#######################################################################################################\n");
-      
-    } else if(((theTheorPrice-anAskSignal[i])/theMargin)>(1-thePrecision_Prices)) {
-      
+
+    } else if(((theTheorPrice-anAskSignal[i])/effectiveMarginLower)>(1-thePrecision_Prices)) {
+
       //Rprintf("#######################################################################################################\n");
       //Rprintf("[%i] Will insert DOWNWARD crossing now! TheoPrice: %f, ask signal: %f, margin: %f\n",
-      //       i, theTheorPrice, anAskSignal[i], theMargin);
-      
-      moveTheoPriceVec[i] = -ceil((theTheorPrice-anAskSignal[i]-theMargin+thePrecision_Prices*theMargin)/theStepback)*theStepback;
+      //       i, theTheorPrice, anAskSignal[i], effectiveMarginLower);
+
+      moveTheoPriceVec[i] = -ceil((theTheorPrice-anAskSignal[i]-effectiveMarginLower+thePrecision_Prices*effectiveMarginLower)/theStepback)*theStepback;
       theTheorPrice = theTheorPrice + moveTheoPriceVec[i];
-      
+
+      // Update skew bounds after downward crossing
+      if (enableSkew) {
+        if (nbTickSinceDownCrossing <= 90) {
+          skewLowerBound = 2.0;
+        }
+        if (nbTickSinceDownCrossing <= 60) {
+          skewLowerBound = 3.0;
+        }
+        if (nbTickSinceDownCrossing <= 30) {
+          skewLowerBound = 4.0;
+        }
+
+        // Counter-balance: reduce opposite side skew
+        skewUpperBound = std::max(1.0, skewUpperBound - 1.0);
+
+        // Reset counter after crossing
+        nbTickSinceDownCrossing = 0;
+      }
+
       //Rprintf("[%i] moveTheoPriceVec=%f\n", i, moveTheoPriceVec[i]);
       //Rprintf("#######################################################################################################\n");
     }
@@ -69,23 +126,27 @@ List generateCrossing(NumericVector aBidSignal, NumericVector anAskSignal,
     // R
     // margin.lower.xy     <- -normalized.signal.vector * margin/2-theoretical.price
     // margin.upper.xy     <- normalized.signal.vector * margin/2+theoretical.price
-    
+
     // y.intercept.margin.lower <- margin.lower.xy[2]-margin.inv.vector[2]/margin.inv.vector[1]*margin.lower.xy[1]
     // y.intercept.margin.upper <- margin.upper.xy[2]-margin.inv.vector[2]/margin.inv.vector[1]*margin.upper.xy[1]
-    
+
     // # freeze leg A and quote leg B
     // sell.quote.level.b       <- margin.inv.slope*ask.a + y.intercept.margin.lower
-    // buy.quote.level.b        <- margin.inv.slope*bid.a + y.intercept.margin.upper 
-    
+    // buy.quote.level.b        <- margin.inv.slope*bid.a + y.intercept.margin.upper
+
     // # freeze leg B and quote leg A
     // sell.quote.level.a       <- (ask.b - y.intercept.margin.upper)/margin.inv.slope
     // buy.quote.level.a        <- (bid.b - y.intercept.margin.lower)/margin.inv.slope
-    
+
     // C++
-    marginLowerX = -theNormSigA*(theMargin-theTheorPrice);
-    marginLowerY = -theNormSigB*(theMargin-theTheorPrice);
-    marginUpperX = theNormSigA*(theMargin+theTheorPrice);
-    marginUpperY = theNormSigB*(theMargin+theTheorPrice);
+    // Apply skew to margins for quote levels
+    double effectiveMarginUpper = theMargin * skewUpperBound;
+    double effectiveMarginLower = theMargin * skewLowerBound;
+
+    marginLowerX = -theNormSigA*(effectiveMarginLower-theTheorPrice);
+    marginLowerY = -theNormSigB*(effectiveMarginLower-theTheorPrice);
+    marginUpperX = theNormSigA*(effectiveMarginUpper+theTheorPrice);
+    marginUpperY = theNormSigB*(effectiveMarginUpper+theTheorPrice);
     
     yInterceptMarginLower = marginLowerY-theMarginInvB/theMarginInvA*marginLowerX;
     yInterceptMarginUpper = marginUpperY-theMarginInvB/theMarginInvA*marginUpperX;
