@@ -139,9 +139,9 @@ List generateCrossing(NumericVector aBidSignal, NumericVector anAskSignal,
     // buy.quote.level.a        <- (bid.b - y.intercept.margin.lower)/margin.inv.slope
 
     // C++
-    // Apply skew to margins for quote levels
-    double effectiveMarginUpper = theMargin * skewUpperBound;
-    double effectiveMarginLower = theMargin * skewLowerBound;
+    // Update effective margins for quote levels (skew bounds may have changed after crossing)
+    effectiveMarginUpper = theMargin * skewUpperBound;
+    effectiveMarginLower = theMargin * skewLowerBound;
 
     marginLowerX = -theNormSigA*(effectiveMarginLower-theTheorPrice);
     marginLowerY = -theNormSigB*(effectiveMarginLower-theTheorPrice);
