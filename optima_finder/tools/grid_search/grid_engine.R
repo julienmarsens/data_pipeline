@@ -385,6 +385,7 @@ for(z in 1:length(product.names.lst)) {
     # utility surface to be exported
     grid.util.surface    <- NULL
     pnl.util.surface     <- list()
+    skew.util.surface    <- list()
 
     ######### FILTER IS AND OOS DATES
 
@@ -766,6 +767,11 @@ num.loops <- length(relative.signal.angle.range) *
                                      tick.size.a, tick.size.b,
                                      enableSkew = ENABLE_SKEW)
 
+          # Compute IS skew statistics
+          skew.activations.is <- sum(dPrice$skewUpperVec > 1 | dPrice$skewLowerVec > 1)
+          pct.time.skewed.is  <- skew.activations.is / length(dPrice$skewUpperVec)
+          avg.skew.upper.is   <- mean(dPrice$skewUpperVec)
+          avg.skew.lower.is   <- mean(dPrice$skewLowerVec)
 
           # check crossings and how long a quote would have become a trade
           # compute trade price on the maker and taker side
@@ -1128,6 +1134,12 @@ num.loops <- length(relative.signal.angle.range) *
                 # legacy
                 pnl.wo.mh.oos <- pnl.wo.mh.oos.lst$pnl.wo.mh
 
+                # Extract OOS skew statistics
+                skew.activations.oos <- pnl.wo.mh.oos.lst$skew.activations.oos
+                pct.time.skewed.oos  <- pnl.wo.mh.oos.lst$pct.time.skewed.oos
+                avg.skew.upper.oos   <- pnl.wo.mh.oos.lst$avg.skew.upper.oos
+                avg.skew.lower.oos   <- pnl.wo.mh.oos.lst$avg.skew.lower.oos
+
                 # Always export PnL surface, even if bad
                 if(is.export.pnl.surface) {
                   titl <- paste(normalized.signal.vector[1],"#",normalized.signal.vector[2],"#",margin,"#",
@@ -1138,9 +1150,15 @@ num.loops <- length(relative.signal.angle.range) *
                     # create a zero series aligned to OOS timestamps
                     pnl.util.surface[[titl]] <- zoo(rep(0, nrow(prices.bbo.a.b.oos)),
                                                     order.by=prices.bbo.a.b.oos[,"time_seconds"])
+                    # Skew surface: all 1.0 when no OOS data
+                    skew.util.surface[[titl]] <- zoo(rep(1, nrow(prices.bbo.a.b.oos)),
+                                                     order.by=prices.bbo.a.b.oos[,"time_seconds"])
                   } else {
                     idx.seq.oos <- trunc(seq(from = 1, to = nrow(prices.bbo.a.b.oos), length.out = length(pnl.wo.mh.oos)))
                     pnl.util.surface[[titl]] <- zoo(pnl.wo.mh.oos, order.by=prices.bbo.a.b.oos[idx.seq.oos,"time_seconds"])
+                    # Skew surface: max(upper, lower) intensity per tick
+                    skew.intensity.oos <- pnl.wo.mh.oos.lst$skew.intensity.oos
+                    skew.util.surface[[titl]] <- zoo(skew.intensity.oos[idx.seq.oos], order.by=prices.bbo.a.b.oos[idx.seq.oos,"time_seconds"])
                   }
                 }
 
@@ -1179,7 +1197,15 @@ num.loops <- length(relative.signal.angle.range) *
                      tail(pnl.wo.mh.oos,1),
                      num.crossing_oos,
                      r2,
-                     mc_idx    # <-- NEW FLAG
+                     mc_idx,
+                     skew.activations.is,
+                     pct.time.skewed.is,
+                     avg.skew.upper.is,
+                     avg.skew.lower.is,
+                     skew.activations.oos,
+                     pct.time.skewed.oos,
+                     avg.skew.upper.oos,
+                     avg.skew.lower.oos
                    )
                 )
 
@@ -1295,7 +1321,15 @@ num.loops <- length(relative.signal.angle.range) *
         "pnl.oos",
         "num.crossing.oos",
         "r2",
-        "min_crossing_cfg_id"
+        "min_crossing_cfg_id",
+        "skew_activations_is",
+        "pct_time_skewed_is",
+        "avg_skew_upper_is",
+        "avg_skew_lower_is",
+        "skew_activations_oos",
+        "pct_time_skewed_oos",
+        "avg_skew_upper_oos",
+        "avg_skew_lower_oos"
       )
 
       to_export  <- paste(path.to.results, "/gs_", args[1], "_", args[2], "_", export.name.flag, ".csv", sep="")
@@ -1318,6 +1352,22 @@ num.loops <- length(relative.signal.angle.range) *
 
       to_export                   <- paste(path.to.results, "/pnl_", args[1], "_", args[2], "_", export.name.flag, ".csv", sep="")
       write.table(pnl.util.surface.mtx, to_export, quote = FALSE, sep = ",", row.names = FALSE, append = FALSE)
+    }
+
+    # Export skew intensity surface
+    if(length(skew.util.surface)) {
+
+      skew.util.surface.raw        <- do.call(merge, skew.util.surface)
+
+      skew.util.surface.clean      <- na.locf0(skew.util.surface.raw)
+
+      skew.util.surface.mtx        <- as.matrix(skew.util.surface.clean)
+      skew.util.surface.mtx[is.na(skew.util.surface.mtx)] <- 1
+      skew.util.surface.mtx                              <- cbind(as.numeric(rownames(skew.util.surface.mtx)), skew.util.surface.mtx)
+      colnames(skew.util.surface.mtx)[1]                 <- "time_seconds"
+
+      to_export                   <- paste(path.to.results, "/skew_", args[1], "_", args[2], "_", export.name.flag, ".csv", sep="")
+      write.table(skew.util.surface.mtx, to_export, quote = FALSE, sep = ",", row.names = FALSE, append = FALSE)
     }
 
     # close pdf writer

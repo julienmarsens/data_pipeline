@@ -41,6 +41,10 @@ List generateCrossing(NumericVector aBidSignal, NumericVector anAskSignal,
   
   NumericVector aSellLevelB(n); // level of the buy a quote
   NumericVector aBuyLevelB(n);
+
+  // Skew tracking vectors
+  NumericVector skewUpperVec(n, 1.0);  // initialized to 1.0
+  NumericVector skewLowerVec(n, 1.0);  // initialized to 1.0
   
   // check for crossings, loop through all prices
   for(int i = 0; i < n; ++i) {
@@ -168,6 +172,10 @@ List generateCrossing(NumericVector aBidSignal, NumericVector anAskSignal,
     //aSellLevelA[i] = (anAskB[i]-yInterceptMarginUpper)/theMarginInvSlope;
     //aBuyLevelA[i] = (aBidB[i]-yInterceptMarginLower)/theMarginInvSlope;
     
+    // Record skew state at this tick
+    skewUpperVec[i] = skewUpperBound;
+    skewLowerVec[i] = skewLowerBound;
+
     //if(moveTheoPriceVec[i]!=0){
       //11824003
     if(i< -1 ) {
@@ -197,5 +205,7 @@ List generateCrossing(NumericVector aBidSignal, NumericVector anAskSignal,
                       Named("aBuyLevelA") = aBuyLevelA,
                       Named("aBuyLevelB") = aBuyLevelB,
                       Named("aSellLevelA") = aSellLevelA,
-                      Named("aSellLevelB") = aSellLevelB); 
+                      Named("aSellLevelB") = aSellLevelB,
+                      Named("skewUpperVec") = skewUpperVec,
+                      Named("skewLowerVec") = skewLowerVec);
 }

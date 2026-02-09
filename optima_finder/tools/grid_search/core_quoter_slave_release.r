@@ -676,8 +676,26 @@ run.oos.sim <- function(prices.bbo.a.b.oos,
   ###########################################################################################################
   # aggregate results
   usd.profit.cum                                <- cbind(pnl.cum.a, pnl.cum.b)
-  pnl.wo.mh                                     <- list(pnl.wo.mh=pnl.cum.a + pnl.cum.b,  safe.position.a.b=safe.position.a.b, usd.profit.cum=usd.profit.cum, daily.date.serie=daily.date.serie)
-  
+
+  # Compute OOS skew statistics
+  skew.activations.oos <- sum(dPrice$skewUpperVec > 1 | dPrice$skewLowerVec > 1)
+  pct.time.skewed.oos  <- skew.activations.oos / length(dPrice$skewUpperVec)
+  avg.skew.upper.oos   <- mean(dPrice$skewUpperVec)
+  avg.skew.lower.oos   <- mean(dPrice$skewLowerVec)
+
+  # Skew intensity vector: max(upper, lower) at each tick
+  skew.intensity.oos   <- pmax(dPrice$skewUpperVec, dPrice$skewLowerVec)
+
+  pnl.wo.mh                                     <- list(pnl.wo.mh=pnl.cum.a + pnl.cum.b,
+                                                         safe.position.a.b=safe.position.a.b,
+                                                         usd.profit.cum=usd.profit.cum,
+                                                         daily.date.serie=daily.date.serie,
+                                                         skew.activations.oos=skew.activations.oos,
+                                                         pct.time.skewed.oos=pct.time.skewed.oos,
+                                                         avg.skew.upper.oos=avg.skew.upper.oos,
+                                                         avg.skew.lower.oos=avg.skew.lower.oos,
+                                                         skew.intensity.oos=skew.intensity.oos)
+
   return(pnl.wo.mh)
 }
 
