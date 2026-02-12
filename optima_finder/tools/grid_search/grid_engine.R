@@ -10,6 +10,8 @@ Sys.setenv(TZ='UTC')
 
 library(zoo)
 library(yaml)
+library(doParallel)
+library(foreach)
 
 ###########  constant configuration
 
@@ -84,15 +86,19 @@ path.to.results  <- file.path(perso_disk_path, "results", args[11])
 
 ###########  Load and/or install R packages and libs
 
-# C++
-Rcpp::sourceCpp(paste(repo_base_path, "/", "quoter_algo.cpp", sep=""))
-Rcpp::sourceCpp(paste(repo_base_path, "/", "quoter_rm_increasing_size.cpp", sep=""))
+# C++ (pre-compiled package)
+library(quoterPkg)
 # R utils
 source(paste(repo_base_path, "/", "data_tools.r", sep=""))
 source(paste(repo_base_path, "/", "product_specs.r", sep=""))
 source(paste(repo_base_path, "/", "stats.r", sep=""))
 # oos slave script
 source(paste(repo_base_path, "/", "core_quoter_slave_release.r", sep=""))
+
+# --- Parallel setup (fork-based, shares memory with parent) ---
+ncores_inner <- max(1, min(4, parallel::detectCores() %/% 3))
+registerDoParallel(cores = ncores_inner)
+cat(file=stderr(), paste0("[Parallel] Using ", ncores_inner, " cores for inner loop parallelization\n"))
 
 # -------------------------------------------------
 # Auto margin calibration
@@ -464,6 +470,11 @@ for(z in 1:length(product.names.lst)) {
       idx.oos.eod  <- NULL
     }
 
+    # Pre-compute FX-converted OOS prices (used for OOS crossing cache)
+    prices.bbo.a.b.oos.fx <- prices.bbo.a.b.oos
+    prices.bbo.a.b.oos.fx[, c("bid.a", "ask.a", "bid.b", "ask.b")] <-
+      t(t(prices.bbo.a.b.oos[, c("bid.a", "ask.a", "bid.b", "ask.b")]) * c(fx.a, fx.a, fx.b, fx.b))
+
     ###########  Compute best cointegration direction based on linear regression
 
     # use full sample for regression
@@ -785,515 +796,285 @@ num.loops <- length(relative.signal.angle.range) *
 
           ###########  Compute order size new version
           # if no crossing at all for that rp...go to the next iteration
-          if(!any(dPrice$moveTheoPriceVec!=0)) next
+          num.crossings.is <- sum(dPrice$moveTheoPriceVec != 0)
+          if(num.crossings.is == 0) {
+            inner.loop.size <- length(relative.trading.angle.range) *
+                               length(relative.order.size.range) *
+                               length(num.crossing.2.limit.range)
+            iter.num <- iter.num + inner.loop.size
+            next
+          }
+          # Early termination: if crossings < MIN_CROSSING, skip all inner loops
+          if(num.crossings.is < MIN_CROSSING) {
+            inner.loop.size <- length(relative.trading.angle.range) *
+                               length(relative.order.size.range) *
+                               length(num.crossing.2.limit.range)
+            iter.num <- iter.num + inner.loop.size
+            next
+          }
 
           # to speed up process keep only non zero crossing
           #idx.occurence  <- dPrice$moveTheoPriceVec!=0
 
-          ###########  Compute trading angle
+          ###########  Pre-compute OOS crossing (depends only on signal_angle, margin, stepback)
+          signal.prices.oos <- cbind(
+            prices.bbo.a.b.oos.fx[, "bid.a"] * normalized.signal.vector[1] +
+              prices.bbo.a.b.oos.fx[, "ask.b"] * normalized.signal.vector[2],
+            prices.bbo.a.b.oos.fx[, "ask.a"] * normalized.signal.vector[1] +
+              prices.bbo.a.b.oos.fx[, "bid.b"] * normalized.signal.vector[2])
 
-          for(l in 1:length(relative.trading.angle.range)) {
+          theo.price.oos      <- (signal.prices.oos[1,1] + signal.prices.oos[1,2]) / 2
+          margin.inv.vector.oos <- c(-normalized.signal.vector[2], normalized.signal.vector[1])
+          margin.inv.slope.oos  <- margin.inv.vector.oos[2] / margin.inv.vector.oos[1]
 
-            # Base.trading.angle is contructed such that it is always in quadrant I
+          dPrice.oos <- generateCrossing(signal.prices.oos[,1], signal.prices.oos[,2],
+                                         prices.bbo.a.b.oos.fx[, "bid.a"],
+                                         prices.bbo.a.b.oos.fx[, "ask.a"],
+                                         prices.bbo.a.b.oos.fx[, "bid.b"],
+                                         prices.bbo.a.b.oos.fx[, "ask.b"],
+                                         theo.price.oos, margin, stepback,
+                                         margin.inv.vector.oos[1], margin.inv.vector.oos[2],
+                                         margin.inv.slope.oos,
+                                         normalized.signal.vector[1], normalized.signal.vector[2],
+                                         tick.size.a, tick.size.b,
+                                         enableSkew = ENABLE_SKEW)
+
+          # Build OOS quote levels (reuse for all inner loop iterations)
+          quote.level.oos <- data.frame(prices.bbo.a.b.oos.fx,
+                                        dPrice.oos$aSellLevelA,
+                                        dPrice.oos$aBuyLevelA,
+                                        dPrice.oos$aSellLevelB,
+                                        dPrice.oos$aBuyLevelB)
+          names(quote.level.oos) <- c("timedate", "bid.a", "ask.a", "bid.b", "ask.b",
+                                      "aSellLevelA", "aBuyLevelA", "aSellLevelB", "aBuyLevelB")
+
+          # OOS skew statistics (computed once per outer triple)
+          skew.activations.oos <- sum(dPrice.oos$skewUpperVec > 1 | dPrice.oos$skewLowerVec > 1)
+          pct.time.skewed.oos  <- skew.activations.oos / length(dPrice.oos$skewUpperVec)
+          avg.skew.upper.oos   <- mean(dPrice.oos$skewUpperVec)
+          avg.skew.lower.oos   <- mean(dPrice.oos$skewLowerVec)
+          skew.intensity.oos   <- pmax(dPrice.oos$skewUpperVec, dPrice.oos$skewLowerVec)
+
+          ###########  Parallel inner loop computation (trading angle x order size x nc2l)
+
+          inner.params <- expand.grid(
+            l_idx = seq_along(relative.trading.angle.range),
+            m_idx = seq_along(relative.order.size.range),
+            n_idx = seq_along(num.crossing.2.limit.range)
+          )
+
+          inner.results <- foreach(row = seq_len(nrow(inner.params))) %dopar% {
+            l <- inner.params$l_idx[row]
+            m <- inner.params$m_idx[row]
+            n <- inner.params$n_idx[row]
+
+            # === Trading angle ===
             base.trading.angle        <- relative.trading.angle.range[l]*1/4*pi+1/4*pi
-            #base.trading.angle        <- -0.99*1/4*pi+1/4*pi
             trading.vector            <- c(cos(base.trading.angle), -sin(base.trading.angle))
-            normalized.trading.vector <- trading.vector/sqrt(sum(trading.vector^2)) # no need...
-
-            ###########  Compute order size (legacy & Q)
-
-            for(m in 1:length(relative.order.size.range)) {
-
-              # consider min order size see above
-              # modif USD: order.size.range should be a percentage invesment of the contract value
-              order.size                <- abs(order.size.range[m] * normalized.trading.vector)
-              typical.order.size        <- order.size.range[m]
-
-              ###########  RM - SAG - i.e. number of crossing...prevent martingal mechanism...
-
-              for(n in 1:length(num.crossing.2.limit.range)) {
-
-                nc2l                      <- num.crossing.2.limit.range[n]
-
-                base.order.size.a         <- order.size[1]
-                base.order.size.b         <- order.size[2]
-
-                max.inventories           <- abs(num.crossing.2.limit.range[n] * c(base.order.size.a, base.order.size.b))
-
-                safe.position             <- nc2lInventoryControl(quote.level[,"bid.a"], quote.level[,"ask.a"], quote.level[,"bid.b"], quote.level[,"ask.b"],
-                                                                  quote.level[,"aSellLevelA"], quote.level[,"aBuyLevelA"], quote.level[,"aSellLevelB"], quote.level[,"aBuyLevelB"],
-                                                                  nc2l, base.order.size.a, base.order.size.b)
-
-                # constrains to min order size
-
-                clean.order.rounded       <- cbind(sign(safe.position$theOrderVecA)*floor(abs(safe.position$theOrderVecA)/min.order.size.a)*min.order.size.a,
-                                                   sign(safe.position$theOrderVecB)*floor(abs(safe.position$theOrderVecB)/min.order.size.b)*min.order.size.b)
-
-                safe.position.a.b         <- cbind(cumsum(clean.order.rounded[,1]), cumsum(clean.order.rounded[,2]))
-
-                # necessary for pnl & fees calculation -> crossing index
-                idx.xing                   <- clean.order.rounded[,1] !=0 | clean.order.rounded[,2] !=0
-
-                ###########  PnL calculation
-
-                precision.prices        <-  1.e-5
-                idx.1                   <- quote.level[-nrow(quote.level),"aSellLevelA"] - quote.level[-1,"bid.a"] <= precision.prices
-                idx.2                   <- quote.level[-nrow(quote.level),"aBuyLevelA"] - quote.level[-1,"ask.a"] >= -precision.prices
-                idx.3                   <- quote.level[-nrow(quote.level),"aSellLevelB"] - quote.level[-1,"bid.b"] <= precision.prices
-                idx.4                   <- quote.level[-nrow(quote.level),"aBuyLevelB"] - quote.level[-1,"ask.b"] >= -precision.prices
-
-                trade.price.raw         <- cbind(rep(0, time=nrow(safe.position.a.b)),
-                                                 rep(0, time=nrow(safe.position.a.b)),
-                                                 rep(0, time=nrow(safe.position.a.b)),
-                                                 rep(0, time=nrow(safe.position.a.b)))
-
-                trade.price.raw[which(idx.1)+1,] <- cbind(quote.level[which(idx.1),"aSellLevelA"],
-                                                          quote.level[which(idx.1),"aSellLevelA"],
-                                                          quote.level[which(idx.1)+1,"ask.b"],
-                                                          quote.level[which(idx.1)+1,"ask.b"])
-                trade.price.raw[which(idx.2)+1,] <- cbind(quote.level[which(idx.2),"aBuyLevelA"],
-                                                          quote.level[which(idx.2),"aBuyLevelA"],
-                                                          quote.level[which(idx.2)+1,"bid.b"],
-                                                          quote.level[which(idx.2)+1,"bid.b"])
-                trade.price.raw[which(idx.3)+1,] <- cbind(quote.level[which(idx.3)+1,"ask.a"],
-                                                          quote.level[which(idx.3)+1,"ask.a"],
-                                                          quote.level[which(idx.3),"aSellLevelB"],
-                                                          quote.level[which(idx.3),"aSellLevelB"])
-                trade.price.raw[which(idx.4)+1,] <- cbind(quote.level[which(idx.4)+1,"bid.a"],
-                                                          quote.level[which(idx.4)+1,"bid.a"],
-                                                          quote.level[which(idx.4),"aBuyLevelB"],
-                                                          quote.level[which(idx.4),"aBuyLevelB"])
-
-                trade.price                      <- data.frame(prices.bbo.a.b[,1], trade.price.raw)
-
-                # compute the transaction fees. -> retrieved dynamically from product_specs.r file
-                transaction.fees                  <- cbind(rep(0, time=nrow(safe.position.a.b)),
-                                                           rep(0, time=nrow(safe.position.a.b)))
-
-                order.fees                   <- clean.order.rounded *0
-
-                order.fees[which(idx.1),1]   <- clean.order.rounded[which(idx.1)+1,1]
-                order.fees[which(idx.1)+1,2] <- clean.order.rounded[which(idx.1)+1,2]
-
-                order.fees[which(idx.2),1]   <- clean.order.rounded[which(idx.2)+1,1]
-                order.fees[which(idx.2)+1,2] <- clean.order.rounded[which(idx.2)+1,2]
-
-                order.fees[which(idx.3)+1,1] <- clean.order.rounded[which(idx.3)+1,1]
-                order.fees[which(idx.3),2]   <- clean.order.rounded[which(idx.3)+1,2]
-
-                order.fees[which(idx.4)+1,1] <- clean.order.rounded[which(idx.4)+1,1]
-                order.fees[which(idx.4),2]   <- clean.order.rounded[which(idx.4)+1,2]
-
-
-                transaction.fees[which(idx.1)+1,] <- cbind(abs(order.fees[which(idx.1),1])*t.fees.maker.a, abs(order.fees[which(idx.1)+1,2])*t.fees.taker.b)
-                transaction.fees[which(idx.2)+1,] <- cbind(abs(order.fees[which(idx.2),1])*t.fees.maker.a, abs(order.fees[which(idx.2)+1,2])*t.fees.taker.b)
-
-                transaction.fees[which(idx.3)+1,] <- cbind(abs(order.fees[which(idx.3)+1,1])*t.fees.taker.a, abs(order.fees[which(idx.3),2])*t.fees.maker.b)
-                transaction.fees[which(idx.4)+1,] <- cbind(abs(order.fees[which(idx.4)+1,1])*t.fees.taker.a, abs(order.fees[which(idx.4),2])*t.fees.maker.b)
-
-                transaction.fees.cum              <- cbind(cumsum(transaction.fees[,1]), cumsum(transaction.fees[,2]))
-
-                ###########  PnL calculation -> Version 2.0
-                ###########  Inverse swap -> i.e. coin margined products
-
-                if(!is.daily.hedged) {
-                  t.fees.bc.a <- transaction.fees[idx.xing,1]/trade.price[idx.xing,3]
-                  t.fees.bc.b <- transaction.fees[idx.xing,2]/trade.price[idx.xing,5]
-
-                  pnl.dsc.a   <- cbind(-clean.order.rounded[idx.xing,1], clean.order.rounded[idx.xing,1]/trade.price[idx.xing,2]-t.fees.bc.a)
-                  pnl.dsc.b   <- cbind(-clean.order.rounded[idx.xing,2], clean.order.rounded[idx.xing,2]/trade.price[idx.xing,4]-t.fees.bc.b)
-
-                  pnl.cum.a <- cbind(cumsum(pnl.dsc.a[,1]),cumsum(pnl.dsc.a[,2]))
-                  pnl.cum.b <- cbind(cumsum(pnl.dsc.b[,1]),cumsum(pnl.dsc.b[,2]))
-
-                  # format to legacy format, WARNING: remove/comment 2 following lines if proceed to validation, see below...
-                  pnl.cum.a <- pnl.cum.a[,1]+pnl.cum.a[,2]*trade.price[idx.xing,3]
-                  pnl.cum.b <- pnl.cum.b[,1]+pnl.cum.b[,2]*trade.price[idx.xing,5]
-
-                  plot(pnl.cum.a+pnl.cum.b, type='l')
-
-                } else {
-
-                  ###########################################################################################################
-                  ###########  PnL calculation -> Version 3.0
-                  ###########################################################################################################
-
-                  # loop through days and compute intraday cummulative pnl
-                  previous.quote.position.a <- 0
-                  previous.quote.position.b <- 0
-
-                  liquidation.mid.price.a <- NULL
-                  liquidation.mid.price.b <- NULL
-
-                  # dbg
-                  trade.serie.a <- NULL
-                  trade.serie.b <- NULL
-
-                  fees.serie.a  <- NULL
-                  fees.serie.b  <- NULL
-
-                  # end dbg
-
-                  # keep track of daily pnl for daily pnl sharpe calculation
-                  daily.date.serie  <- NULL
-
-                  for(w in 1:length(idx.is.eod)) {
-
-                    # find crossings within that day (if any)
-                    if(w==1){
-                      idx.day      <- 1:idx.is.eod[1]
-                    } else {
-                      idx.day      <- (idx.is.eod[w-1]+1):idx.is.eod[w]
-                    }
-
-                    # daily crossing
-                    idx.xing.day <- idx.xing[idx.day]
-
-                    # compute liquidation price and entry price
-                    entry.mid.price.a <- ifelse(is.null(liquidation.mid.price.a), head(prices.bbo.a.b[idx.day,2]+prices.bbo.a.b[idx.day,3],1)/2, liquidation.mid.price.a)
-                    entry.mid.price.b <- ifelse(is.null(liquidation.mid.price.b), head(prices.bbo.a.b[idx.day,4]+prices.bbo.a.b[idx.day,5],1)/2, liquidation.mid.price.b)
-
-                    liquidation.mid.price.a <- tail(prices.bbo.a.b[idx.day,2]+prices.bbo.a.b[idx.day,3],1)/2
-                    liquidation.mid.price.b <- tail(prices.bbo.a.b[idx.day,4]+prices.bbo.a.b[idx.day,5],1)/2
-
-                    pnl.dsc.a   <- NULL
-                    pnl.dsc.b   <- NULL
-
-                    # check that at least one crossing occured during that day
-                    if(any(idx.xing.day)) {
-
-                      # beware if there is only one crossing that day...not a matrix but a vector...
-                      if(length(idx.xing.day)==1) {
-                        t.fees.bc.a <- as.numeric(transaction.fees[idx.day,][1]/trade.price[idx.day,][3])
-                        t.fees.bc.b <- as.numeric(transaction.fees[idx.day,][2]/trade.price[idx.day,][5])
-                      } else {
-                        t.fees.bc.a <- transaction.fees[idx.day,][idx.xing.day,1]/trade.price[idx.day,][idx.xing.day,3]
-                        t.fees.bc.b <- transaction.fees[idx.day,][idx.xing.day,2]/trade.price[idx.day,][idx.xing.day,5]
-                      }
-
-                      fees.serie.a  <- c(fees.serie.a, 0)
-                      fees.serie.b  <- c(fees.serie.b, 0)
-
-                      # dbg
-
-                      if(is.null(trade.serie.a)) {
-                        trade.serie.a <- c(previous.quote.position.a, entry.mid.price.a)
-                      } else {
-                        trade.serie.a <- rbind(trade.serie.a, c(previous.quote.position.a, entry.mid.price.a))
-                      }
-
-                      if(is.null(trade.serie.b)) {
-                        trade.serie.b <- c(previous.quote.position.b, entry.mid.price.b)
-                      } else {
-                        trade.serie.b <- rbind(trade.serie.b, c(previous.quote.position.b, entry.mid.price.b))
-                      }
-
-                      # dbg
-
-                      # beware if there is only one crossing that day...not a matrix but a vector...
-                      if(length(idx.xing.day)==1) {
-                        trade.serie.a <- rbind(trade.serie.a, as.numeric(cbind(-clean.order.rounded[idx.day,][1], trade.price[idx.day,][2])))
-                        trade.serie.b <- rbind(trade.serie.b, as.numeric(cbind(-clean.order.rounded[idx.day,][2], trade.price[idx.day,][4])))
-                      } else {
-                        trade.serie.a <- rbind(trade.serie.a, cbind(-clean.order.rounded[idx.day,][idx.xing.day,1], trade.price[idx.day,][idx.xing.day,2]))
-                        trade.serie.b <- rbind(trade.serie.b, cbind(-clean.order.rounded[idx.day,][idx.xing.day,2], trade.price[idx.day,][idx.xing.day,4]))
-                      }
-
-                      fees.serie.a  <- c(fees.serie.a, t.fees.bc.a)
-                      fees.serie.b  <- c(fees.serie.b, t.fees.bc.b)
-
-                      # end dbg
-
-                      # keep track of positions in quote w/o liquidation
-                      previous.quote.position.a <- sum(pnl.dsc.a[,1])
-                      previous.quote.position.b <- sum(pnl.dsc.b[,1])
-
-                      # dbg
-                      fees.serie.a  <- c(fees.serie.a, 0)
-                      fees.serie.b  <- c(fees.serie.b, 0)
-
-                      trade.serie.a <- rbind(trade.serie.a, c(-previous.quote.position.a, liquidation.mid.price.a))
-                      trade.serie.b <- rbind(trade.serie.b, c(-previous.quote.position.b, liquidation.mid.price.b))
-                      # end dbg
-
-                    } else {
-
-                      # dbg
-                      fees.serie.a  <- c(fees.serie.a, 0)
-                      fees.serie.b  <- c(fees.serie.b, 0)
-
-                      if(is.null(trade.serie.a)) {
-                        trade.serie.a <- c(previous.quote.position.a, entry.mid.price.a)
-                      } else {
-                        trade.serie.a <- rbind(trade.serie.a, c(previous.quote.position.a, entry.mid.price.a))
-                      }
-
-                      if(is.null(trade.serie.b)) {
-                        trade.serie.b <- c(previous.quote.position.b, entry.mid.price.b)
-                      } else {
-                        trade.serie.b <- rbind(trade.serie.b, c(previous.quote.position.b, entry.mid.price.b))
-                      }
-
-                      # dbg
-
-                      trade.serie.a <- rbind(trade.serie.a, c(-previous.quote.position.a, liquidation.mid.price.a))
-                      trade.serie.b <- rbind(trade.serie.b, c(-previous.quote.position.b, liquidation.mid.price.b))
-
-                      # jfa
-                      fees.serie.a  <- c(fees.serie.a, 0)
-                      fees.serie.b  <- c(fees.serie.b, 0)
-
-                    }
-                    # JF: TO BE UPDATED 20250801
-                    daily.date.serie  <- c(daily.date.serie, rep(daily.date.is[w], nrow(trade.serie.a)-length(daily.date.serie)))
-
-                  }
-
-                  pnl.dsc.a   <- cbind(trade.serie.a[,1], -trade.serie.a[,1]/trade.serie.a[,2]-fees.serie.a)
-                  pnl.dsc.b   <- cbind(trade.serie.b[,1], -trade.serie.b[,1]/trade.serie.b[,2]-fees.serie.b)
-
-                  pnl.cum.a <- cbind(cumsum(pnl.dsc.a[,1]),cumsum(pnl.dsc.a[,2]))
-                  pnl.cum.b <- cbind(cumsum(pnl.dsc.b[,1]),cumsum(pnl.dsc.b[,2]))
-
-                  pnl.cum.dbg.a <- as.numeric(pnl.cum.a[,1]+pnl.cum.a[,2]*trade.serie.a[,2])
-                  pnl.cum.dbg.b <- as.numeric(pnl.cum.b[,1]+pnl.cum.b[,2]*trade.serie.b[,2])
-
-                  # format for legacy naming
-                  pnl.cum.a     <- pnl.cum.dbg.a
-                  pnl.cum.b     <- pnl.cum.dbg.b
-
+            normalized.trading.vector <- trading.vector/sqrt(sum(trading.vector^2))
+
+            # === Order size ===
+            order.size                <- abs(order.size.range[m] * normalized.trading.vector)
+            nc2l                      <- num.crossing.2.limit.range[n]
+            base.order.size.a         <- order.size[1]
+            base.order.size.b         <- order.size[2]
+
+            # === IS: Inventory control + PnL (C++) ===
+            safe.position <- nc2lInventoryControl(
+              quote.level[,"bid.a"], quote.level[,"ask.a"],
+              quote.level[,"bid.b"], quote.level[,"ask.b"],
+              quote.level[,"aSellLevelA"], quote.level[,"aBuyLevelA"],
+              quote.level[,"aSellLevelB"], quote.level[,"aBuyLevelB"],
+              nc2l, base.order.size.a, base.order.size.b)
+
+            pnl.result <- computeDailyHedgedPnL(
+              quote.level[,"bid.a"], quote.level[,"ask.a"],
+              quote.level[,"bid.b"], quote.level[,"ask.b"],
+              quote.level[,"aSellLevelA"], quote.level[,"aBuyLevelA"],
+              quote.level[,"aSellLevelB"], quote.level[,"aBuyLevelB"],
+              safe.position$theOrderVecA, safe.position$theOrderVecB,
+              min.order.size.a, min.order.size.b,
+              t.fees.maker.a, t.fees.maker.b,
+              t.fees.taker.a, t.fees.taker.b,
+              as.integer(idx.is.eod),
+              is.daily.hedged)
+
+            pnl.wo.mh       <- pnl.result$pnl_wo_mh
+            daily.date.serie <- daily.date.is[pnl.result$daily_day_index]
+
+            # Base result (always returned for progress logging)
+            result <- list(
+              l = l, m = m, n = n,
+              pnl.tail.is = if(length(pnl.wo.mh) > 0) tail(pnl.wo.mh, 1) else NA
+            )
+
+            # IS filters
+            if(length(pnl.wo.mh) < MIN_CROSSING) return(result)
+            if(is.na(tail(pnl.wo.mh,1)) || tail(pnl.wo.mh,1) <= 0) return(result)
+
+            # IS statistics
+            pnl.all      <- c(0, diff(pnl.wo.mh))
+            pnl.daily    <- aggregate(as.numeric(pnl.all), by=list(daily.date.serie), FUN=sum)
+            daily.sharpe <- mean(pnl.daily[,2])/sd(pnl.daily[,2])
+            if(daily.sharpe < MIN_SHARPE) return(result)
+
+            sharpe.ratio <- daily.sharpe
+            pnl.dsc      <- diff(pnl.wo.mh)
+            pnl.dsc.nz   <- pnl.dsc[pnl.dsc!=0]
+            N            <- length(pnl.dsc.nz)
+            mean_N       <- mean(pnl.dsc.nz) * N
+            std_neg      <- sd(pnl.dsc.nz[pnl.dsc.nz<0]) * sqrt(N)
+            sortino.ratio <- mean_N / std_neg
+            return.factor <- mean(pnl.dsc.nz)/maxdrawdown(pnl.dsc)
+
+            # === OOS PnL (C++) ===
+            pnl.wo.mh.oos.lst <- run.oos.sim(
+              prices.bbo.a.b.oos, dPrice.oos, quote.level.oos,
+              normalized.trading.vector, base.order.size.a, base.order.size.b,
+              nc2l, min.order.size.a, min.order.size.b,
+              t.fees.maker.a, t.fees.maker.b, t.fees.taker.a, t.fees.taker.b,
+              type.a, type.b, is.daily.hedged, idx.oos.eod, daily.date)
+
+            pnl.wo.mh.oos <- pnl.wo.mh.oos.lst$pnl.wo.mh
+
+            # OOS daily Sharpe ratio
+            sharpe.ratio.oos <- 0
+            if(length(pnl.wo.mh.oos) > 1) {
+              pnl.all.oos      <- c(0, diff(pnl.wo.mh.oos))
+              daily.date.serie.oos <- pnl.wo.mh.oos.lst$daily.date.serie
+              if(length(daily.date.serie.oos) == length(pnl.all.oos) && length(unique(daily.date.serie.oos)) > 1) {
+                pnl.daily.oos    <- aggregate(as.numeric(pnl.all.oos), by=list(daily.date.serie.oos), FUN=sum)
+                if(sd(pnl.daily.oos[,2]) > 0) {
+                  sharpe.ratio.oos <- mean(pnl.daily.oos[,2]) / sd(pnl.daily.oos[,2])
                 }
+              }
+            }
 
-                pnl.wo.mh   <- pnl.cum.a + pnl.cum.b #usd.profit.cum[,1] + usd.profit.cum[,2]
+            # PnL/Skew surface entries
+            titl <- paste(normalized.signal.vector[1],"#",normalized.signal.vector[2],"#",margin,"#",
+                          stepback,"#",normalized.trading.vector[1],"#", normalized.trading.vector[2],"#",
+                          order.size.range[m],"#",num.crossing.2.limit.range[n], sep="")
 
-                trade.serie.a_1 <- trade.serie.a
-                trade.serie.b_1 <- trade.serie.b
+            pnl.surface.entry  <- NULL
+            skew.surface.entry <- NULL
+            if(is.export.pnl.surface) {
+              if(length(pnl.wo.mh.oos) == 0) {
+                pnl.surface.entry  <- zoo(rep(0, nrow(prices.bbo.a.b.oos)),
+                                          order.by=prices.bbo.a.b.oos[,"time_seconds"])
+                skew.surface.entry <- zoo(rep(1, nrow(prices.bbo.a.b.oos)),
+                                          order.by=prices.bbo.a.b.oos[,"time_seconds"])
+              } else {
+                idx.seq.oos <- trunc(seq(from = 1, to = nrow(prices.bbo.a.b.oos), length.out = length(pnl.wo.mh.oos)))
+                pnl.surface.entry  <- zoo(pnl.wo.mh.oos, order.by=prices.bbo.a.b.oos[idx.seq.oos,"time_seconds"])
+                skew.surface.entry <- zoo(skew.intensity.oos[idx.seq.oos], order.by=prices.bbo.a.b.oos[idx.seq.oos,"time_seconds"])
+              }
+            }
 
-                cat(file=stderr(), paste("[",Sys.time(),"]",
-                                         paste0(" -- [", iter.num, "/", num.loops, '] completed --- optima # ',
-                                                num.optima, " PnL: ", tail(pnl.wo.mh,1),
-                                                " --- i:",i," # j:",j," # k:", k," # l:",l," # m:", m, "# n:", n), "\n", sep=""))
+            # OOS statistics
+            num.crossing_oos <- sum(diff(pnl.wo.mh.oos) != 0)
+            t_seq <- seq_along(pnl.wo.mh.oos)
+            fit   <- lm(pnl.wo.mh.oos ~ t_seq)
+            slope <- coef(fit)[2]
+            r2    <- summary(fit)$r.squared
 
-                # if (iter.num == num.loops) cat(': Done')
-                iter.num         <- iter.num + 1 # increment grid search counter
+            # Grid row
+            grid.row <- c(titl,
+              relative.signal.angle.range[i], relative.margin.range[j], relative.step.back.range[k],
+              relative.trading.angle.range[l], relative.order.size.range[m], num.crossing.2.limit.range[n],
+              sharpe.ratio, tail(pnl.wo.mh,1), sharpe.ratio.oos, tail(pnl.wo.mh.oos,1),
+              num.crossing_oos, r2, mc_idx,
+              skew.activations.is, pct.time.skewed.is, avg.skew.upper.is, avg.skew.lower.is,
+              skew.activations.oos, pct.time.skewed.oos, avg.skew.upper.oos, avg.skew.lower.oos)
 
-                # move to next iteration if pnl <= 0
-                if(length(pnl.wo.mh)<MIN_CROSSING) next # prevent error when pnl vector is empty...
-                if(is.na(tail(pnl.wo.mh,1)) || tail(pnl.wo.mh,1)<=0) next
+            result$grid.row <- grid.row
+            result$pnl.surface.key   <- titl
+            result$pnl.surface.entry <- pnl.surface.entry
+            result$skew.surface.entry <- skew.surface.entry
+            result$pnl.wo.mh.is  <- pnl.wo.mh
+            result$pnl.wo.mh.oos <- pnl.wo.mh.oos
 
-                ###########  Compute return statistics
+            # Optima filtering
+            result$is.optima <- FALSE
+            if(length(pnl.wo.mh.oos) > 0 && !is.na(tail(pnl.wo.mh.oos,1)) && tail(pnl.wo.mh.oos,1) > 0 &&
+               length(pnl.wo.mh.oos) >= MIN_CROSSING) {
+              pnl.all.oos   <- c(0, diff(pnl.wo.mh.oos))
+              pnl.daily.oos <- aggregate(as.numeric(pnl.all.oos), by=list(pnl.wo.mh.oos.lst$daily.date.serie), FUN=sum)
+              daily.sharpe.oos <- mean(pnl.daily.oos[,2])/sd(pnl.daily.oos[,2])
 
-                # eventually compute daily pnl to compute daily sharpe (sharpe distorision due to occurence frequency...)
-                pnl.all            <- c(0, diff(pnl.wo.mh))
-                pnl.daily          <- aggregate(as.numeric(pnl.all), by=list(daily.date.serie), FUN=sum)
-                daily.sharpe       <- mean(pnl.daily[,2])/sd(pnl.daily[,2])
-
-                if(daily.sharpe<MIN_SHARPE) next
-
-                sharpe.ratio     <- daily.sharpe
-
-                # # compute sharpe ratio or sortino ratio for non zero aggregated (2 legs) pnl
-                pnl.dsc          <- diff(pnl.wo.mh)
-                pnl.dsc.nz       <- pnl.dsc[pnl.dsc!=0]
-
-                ###########################################################################################################
-                # compute sortino ratio
-                N                <- length(pnl.dsc.nz)
-                mean_N           <- mean(pnl.dsc.nz) * N
-                std_neg          <- sd(pnl.dsc.nz[pnl.dsc.nz<0]) * sqrt(N)
-                sortino.ratio    <- mean_N / std_neg
-
-                # compute max drawdown
-                return.factor      <- mean(pnl.dsc.nz)/maxdrawdown(pnl.dsc)
-
-                pnl.wo.mh.oos.lst <- run.oos.sim(prices.bbo.a.b.oos,
-                                                 normalized.signal.vector,
-                                                 margin,
-                                                 stepback,
-                                                 tick.size.a,
-                                                 tick.size.b,
-                                                 normalized.trading.vector,
-                                                 base.order.size.a,
-                                                 base.order.size.b,
-                                                 nc2l,
-                                                 fx.a,
-                                                 fx.b,
-                                                 min.order.size.a,
-                                                 min.order.size.b,
-                                                 t.fees.maker.a,
-                                                 t.fees.maker.b,
-                                                 t.fees.taker.a,
-                                                 t.fees.taker.b,
-                                                 type.a,
-                                                 type.b,
-                                                 is.daily.hedged,
-                                                 idx.oos.eod,
-                                                 daily.date,
-                                                 enable.skew = ENABLE_SKEW)
-
-                # legacy
-                pnl.wo.mh.oos <- pnl.wo.mh.oos.lst$pnl.wo.mh
-
-                # Extract OOS skew statistics
-                skew.activations.oos <- pnl.wo.mh.oos.lst$skew.activations.oos
-                pct.time.skewed.oos  <- pnl.wo.mh.oos.lst$pct.time.skewed.oos
-                avg.skew.upper.oos   <- pnl.wo.mh.oos.lst$avg.skew.upper.oos
-                avg.skew.lower.oos   <- pnl.wo.mh.oos.lst$avg.skew.lower.oos
-
-                # Always export PnL surface, even if bad
-                if(is.export.pnl.surface) {
-                  titl <- paste(normalized.signal.vector[1],"#",normalized.signal.vector[2],"#",margin,"#",
-                                stepback,"#",normalized.trading.vector[1],"#", normalized.trading.vector[2],"#",
-                                order.size.range[m],"#",num.crossing.2.limit.range[n], sep="")
-
-                  if(length(pnl.wo.mh.oos) == 0) {
-                    # create a zero series aligned to OOS timestamps
-                    pnl.util.surface[[titl]] <- zoo(rep(0, nrow(prices.bbo.a.b.oos)),
-                                                    order.by=prices.bbo.a.b.oos[,"time_seconds"])
-                    # Skew surface: all 1.0 when no OOS data
-                    skew.util.surface[[titl]] <- zoo(rep(1, nrow(prices.bbo.a.b.oos)),
-                                                     order.by=prices.bbo.a.b.oos[,"time_seconds"])
-                  } else {
-                    idx.seq.oos <- trunc(seq(from = 1, to = nrow(prices.bbo.a.b.oos), length.out = length(pnl.wo.mh.oos)))
-                    pnl.util.surface[[titl]] <- zoo(pnl.wo.mh.oos, order.by=prices.bbo.a.b.oos[idx.seq.oos,"time_seconds"])
-                    # Skew surface: max(upper, lower) intensity per tick
-                    skew.intensity.oos <- pnl.wo.mh.oos.lst$skew.intensity.oos
-                    skew.util.surface[[titl]] <- zoo(skew.intensity.oos[idx.seq.oos], order.by=prices.bbo.a.b.oos[idx.seq.oos,"time_seconds"])
-                  }
-                }
-
-
-
-                num.crossing_oos <- sum(diff(pnl.wo.mh.oos) != 0)
-
-                # === NEW: Linearity / monotonicity check on OOS pnl ===
-                t <- 1:length(pnl.wo.mh.oos)
-                fit <- lm(pnl.wo.mh.oos ~ t)
-                slope <- coef(fit)[2]
-                r2 <- summary(fit)$r.squared
-
-                ###########  Export grid results for further utility surface analysis
-
-                grid.util.surface <- rbind(grid.util.surface,
-                   c(paste(
-                     normalized.signal.vector[1],"#",
-                     normalized.signal.vector[2],"#",
-                     margin,"#",
-                     stepback,"#",
-                     normalized.trading.vector[1],"#",
-                     normalized.trading.vector[2],"#",
-                     order.size.range[m],"#",
-                     num.crossing.2.limit.range[n], sep=""
-                   ),
-                     relative.signal.angle.range[i],
-                     relative.margin.range[j],
-                     relative.step.back.range[k],
-                     relative.trading.angle.range[l],
-                     relative.order.size.range[m],
-                     num.crossing.2.limit.range[n],
-                     sharpe.ratio,
-                     tail(pnl.wo.mh,1),
-                     sharpe.ratio,
-                     tail(pnl.wo.mh.oos,1),
-                     num.crossing_oos,
-                     r2,
-                     mc_idx,
-                     skew.activations.is,
-                     pct.time.skewed.is,
-                     avg.skew.upper.is,
-                     avg.skew.lower.is,
-                     skew.activations.oos,
-                     pct.time.skewed.oos,
-                     avg.skew.upper.oos,
-                     avg.skew.lower.oos
-                   )
-                )
-
-
-                # skip reporting/plot if performance is neg or zero crossings
-                if(length(pnl.wo.mh.oos) == 0 || is.na(tail(pnl.wo.mh.oos,1)) || tail(pnl.wo.mh.oos,1)<=0) next
-                if(length(pnl.wo.mh.oos)<MIN_CROSSING) next # prevent error when pnl vector is empty...
-
-                ###########  Compute return statistics
-
-                # eventually compute daily pnl to compute daily sharpe (sharpe distorision due to occurence frequency...)
-                pnl.all            <- c(0, diff(pnl.wo.mh.oos))
-                pnl.daily          <- aggregate(as.numeric(pnl.all), by=list(pnl.wo.mh.oos.lst$daily.date.serie), FUN=sum)
-                daily.sharpe       <- mean(pnl.daily[,2])/sd(pnl.daily[,2])
-
-                if(daily.sharpe<MIN_SHARPE) next
-
-                # check for R2 value for filtering
-
-                if (slope <= 0 || r2 < config_file$filtering$minimum_pnl_curve_r2) {
-                  next  # reject this run
-                }
-
-                sharpe.ratio.oos <- daily.sharpe
-
-                pnl.dsc          <- diff(pnl.wo.mh.oos)
-                pnl.dsc.nz       <- pnl.dsc[pnl.dsc!=0]
-
-                # -------------------- #
-                # ---  Export plot --- #
-                # -------------------- #
-
-                # legacy implementation
-                usd.profit.cum                                <- cbind(pnl.cum.a, pnl.cum.b)
-
+              if(daily.sharpe.oos >= MIN_SHARPE && slope > 0 && r2 >= config_file$filtering$minimum_pnl_curve_r2) {
+                result$is.optima       <- TRUE
+                result$sharpe.ratio.is <- sharpe.ratio
+                result$sharpe.ratio.oos <- daily.sharpe.oos
+                result$sortino.ratio   <- sortino.ratio
+                result$return.factor   <- return.factor
+                # IS inventory for plotting
                 if(is.plot.results) {
-                  par(mfrow=c(4,1), cex.main=0.8)
-                  # plot pnl in USD
-                  titl.relative <- paste(relative.signal.angle.range[i],"#",relative.margin.range[j],"#",relative.step.back.range[k],"#",
-                                         relative.trading.angle.range[l],"#",relative.order.size.range[m],"#", num.crossing.2.limit.range[n], sep="")
-
-                  # check is data availability
-                  plot(pnl.wo.mh, type='l', ylim=c(min(pnl.wo.mh), max(pnl.wo.mh)), main=paste("In-Sample run (", head(is.dates.vect,1), "-", tail(is.dates.vect,1), ")", sep=""),
-                       xlab=titl.relative)
-
-                  # signature -> relative parameters for further single simulation calibration
-                  titl <- paste(normalized.signal.vector[1],"#",normalized.signal.vector[2],"#",margin,"#",
-                                stepback,"#",normalized.trading.vector[1],"#", normalized.trading.vector[2],"#",
-                                order.size.range[m],"#",num.crossing.2.limit.range[n], sep="")
-
-                  plot(pnl.wo.mh, type='l', ylim=c(min(pnl.wo.mh, usd.profit.cum[,1], usd.profit.cum[,2]),
-                                                   max(pnl.wo.mh, usd.profit.cum[,1], usd.profit.cum[,2])),
-                       main=titl, cex.main=0.5)
-                  lines(usd.profit.cum[,1], col=2, lty=2)
-                  lines(usd.profit.cum[,2], col=3, lty=2)
-
-                  plot(safe.position.a.b[,1], col=2, type='l', ylim=c(min(safe.position.a.b[,1], safe.position.a.b[,2]),
-                                                                      max(safe.position.a.b[,1], safe.position.a.b[,2])),
-                       ylab="inventory", xlab="red -> product 1, green -> product 2",
-                       main=paste("max inventories (USD) : (", max(abs(safe.position.a.b[,1])), " - ", max(abs(safe.position.a.b[,2])), ")", sep=""))
-                  lines(safe.position.a.b[,2], col=3)
-
-                  # before plotting check that there are crossings for the oos period...
-                  plot(pnl.wo.mh.oos, type='l', ylim=c(min(pnl.wo.mh.oos), max(pnl.wo.mh.oos)), main=paste("OOS-Run(", head(oos.dates.vect,1), "-", tail(oos.dates.vect,1), ")", sep=""))
-
+                  clean.order.a <- sign(safe.position$theOrderVecA)*floor(abs(safe.position$theOrderVecA)/min.order.size.a)*min.order.size.a
+                  clean.order.b <- sign(safe.position$theOrderVecB)*floor(abs(safe.position$theOrderVecB)/min.order.size.b)*min.order.size.b
+                  result$safe.position.a.b <- cbind(cumsum(clean.order.a), cumsum(clean.order.b))
                 }
+              }
+            }
 
+            return(result)
+          }
 
+          ###########  Post-processing: aggregate results sequentially
+          for (res in inner.results) {
+            l <- res$l; m <- res$m; n <- res$n
 
-                status.log <- paste(relative.signal.angle.range[i],"#",relative.margin.range[j],"#",relative.step.back.range[k],"#",
-                                    relative.trading.angle.range[l],"#",relative.order.size.range[m],"#",num.crossing.2.limit.range[n],
-                                    " ### pnl is: ", tail(pnl.wo.mh, 1),
-                                    " ### pnl oos: ", tail(pnl.wo.mh.oos, 1),
-                                    " ### sharpe.ratio: ", sharpe.ratio,
-                                    " ### sharpe.ratio oos: ", sharpe.ratio.oos,
-                                    " sortino.ratio: ", sortino.ratio, " return.factor: ", return.factor, sep="")
+            cat(file=stderr(), paste("[",Sys.time(),"]",
+              paste0(" -- [", iter.num, "/", num.loops, '] completed --- optima # ',
+                     num.optima, " PnL: ", res$pnl.tail.is,
+                     " --- i:",i," # j:",j," # k:", k," # l:",l," # m:", m, "# n:", n), "\n", sep=""))
+            iter.num <- iter.num + 1
 
-                cat(file=stderr(), paste("[",Sys.time(),"] New Optima found : ", status.log, "\n", sep=""))
+            # Append grid row (if OOS was computed)
+            if (!is.null(res$grid.row)) {
+              grid.util.surface <- rbind(grid.util.surface, res$grid.row)
+            }
 
-                num.optima <- num.optima + 1 # keep track on number of optima/candidates...
+            # Append PnL/Skew surface entries
+            if (!is.null(res$pnl.surface.entry)) {
+              pnl.util.surface[[res$pnl.surface.key]]  <- res$pnl.surface.entry
+              skew.util.surface[[res$pnl.surface.key]] <- res$skew.surface.entry
+            }
 
-                ###########################################################################################################
-                ###########  End main loop
-                ###########################################################################################################
+            # Optima reporting and plotting
+            if (isTRUE(res$is.optima)) {
+              pnl.wo.mh     <- res$pnl.wo.mh.is
+              pnl.wo.mh.oos <- res$pnl.wo.mh.oos
 
-              } # end n loop, i.e. num.crossing.2.limit.range
-            } # end m loop, i.e. relative.order.size.range
-          } # end l loop, i.e. relative.trading.angle.range
+              if(is.plot.results) {
+                safe.position.a.b <- res$safe.position.a.b
+                par(mfrow=c(3,1), cex.main=0.8)
+                titl.relative <- paste(relative.signal.angle.range[i],"#",relative.margin.range[j],"#",relative.step.back.range[k],"#",
+                                       relative.trading.angle.range[l],"#",relative.order.size.range[m],"#", num.crossing.2.limit.range[n], sep="")
+                plot(pnl.wo.mh, type='l', ylim=c(min(pnl.wo.mh), max(pnl.wo.mh)),
+                     main=paste("In-Sample run (", head(is.dates.vect,1), "-", tail(is.dates.vect,1), ")", sep=""),
+                     xlab=titl.relative)
+                plot(safe.position.a.b[,1], col=2, type='l',
+                     ylim=c(min(safe.position.a.b[,1], safe.position.a.b[,2]),
+                            max(safe.position.a.b[,1], safe.position.a.b[,2])),
+                     ylab="inventory", xlab="red -> product 1, green -> product 2",
+                     main=paste("max inventories (USD) : (", max(abs(safe.position.a.b[,1])), " - ", max(abs(safe.position.a.b[,2])), ")", sep=""))
+                lines(safe.position.a.b[,2], col=3)
+                plot(pnl.wo.mh.oos, type='l', ylim=c(min(pnl.wo.mh.oos), max(pnl.wo.mh.oos)),
+                     main=paste("OOS-Run(", head(oos.dates.vect,1), "-", tail(oos.dates.vect,1), ")", sep=""))
+              }
+
+              status.log <- paste(relative.signal.angle.range[i],"#",relative.margin.range[j],"#",relative.step.back.range[k],"#",
+                                  relative.trading.angle.range[l],"#",relative.order.size.range[m],"#",num.crossing.2.limit.range[n],
+                                  " ### pnl is: ", tail(pnl.wo.mh, 1),
+                                  " ### pnl oos: ", tail(pnl.wo.mh.oos, 1),
+                                  " ### sharpe.ratio: ", res$sharpe.ratio.is,
+                                  " ### sharpe.ratio oos: ", res$sharpe.ratio.oos,
+                                  " sortino.ratio: ", res$sortino.ratio, " return.factor: ", res$return.factor, sep="")
+
+              cat(file=stderr(), paste("[",Sys.time(),"] New Optima found : ", status.log, "\n", sep=""))
+              num.optima <- num.optima + 1
+            }
+          } # end inner results processing
 
           } # end k loop, i.e. relative.step.back.range
         } # end j loop, i.e. relative.margin.range

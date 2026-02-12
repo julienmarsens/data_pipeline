@@ -277,6 +277,16 @@ class OptimaFinderPipeline():
 			full_path = os.path.join(results_path, saving_folder_name)
 			os.makedirs(full_path, exist_ok=True)
 
+			# Ensure R parallel packages are installed
+			subprocess.run(["Rscript", "-e",
+				'if (!require("doParallel", quietly=TRUE)) install.packages(c("doParallel","foreach"), repos="https://cloud.r-project.org")'],
+				check=True)
+
+			# Pre-compile and install quoterPkg (C++ functions) before launching workers
+			pkg_path = os.path.join(perso_local_path, "data_pipeline", "optima_finder", "tools", "grid_search", "quoterPkg")
+			print(f"Installing quoterPkg from {pkg_path}...")
+			subprocess.run(["R", "CMD", "INSTALL", "--no-multiarch", pkg_path], check=True)
+
 			print(f"Running grid search for {len(pairs_to_grid)} pairs in parallel...")
 			start_time = time.time()
 

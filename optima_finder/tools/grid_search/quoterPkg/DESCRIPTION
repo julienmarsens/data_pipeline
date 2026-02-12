@@ -1,0 +1,10 @@
+Package: quoterPkg
+Title: Quoter Algorithm C++ Functions
+Version: 0.1.0
+Description: Pre-compiled Rcpp functions for grid search (generateCrossing, nc2lInventoryControl).
+Authors@R: person("Data Pipeline", role = c("aut", "cre"), email = "dev@example.com")
+Depends: R (>= 3.5.0)
+Imports: Rcpp
+LinkingTo: Rcpp
+License: MIT
+Encoding: UTF-8

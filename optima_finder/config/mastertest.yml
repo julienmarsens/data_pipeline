@@ -1,0 +1,38 @@
+# if true, all flags below are true
+from_scratch: false #True False
+ignore_prod: true
+
+pull_prod_pairs: false
+
+download_1m_binance_data: true
+download_internal_data: false
+
+find_best_pairs: true
+sync_internal_data: false
+run_grid_search: true
+best_parameter_analysis: true
+
+number_of_config_per_pair: 3
+
+number_of_top_pairs: 11
+number_of_days: 150 # 100
+split_date: 20251010 # set to None if no split date required, will do 50/50 split
+
+selection_utility_function:
+  sharpe_ratio_out_of_sample: 0.15
+  sharpe_ratio_in_sample: 0.15
+  pnl_out_of_sample: 0.1
+  num_crossing_out_of_sample: 0.1
+  r2_out_of_sample: 0.4
+  sharpe_drop_out_sample_to_in_sample: 0.1
+
+assets: ["DOGEUSDT", "AVAXUSDT"]
+
+rolling_angle_windows_in_days: 40
+volatility_window_minutes: 480
+
+# --- auto-fill below, do not edit --- #
+
+prod_pairs: []
+
+# python3 -m optima_finder master
